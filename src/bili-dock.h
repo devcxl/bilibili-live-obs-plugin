@@ -55,7 +55,7 @@ private slots:
 
 private:
     void init_ui();
-    void reset_upper_height();   // 内容变化后重新锁定上部设置区高度
+    int reset_upper_height();    // 内容变化后重新锁定上部设置区高度，返回应用后的固定高度
     void set_logged_out();
     void hide_login_ui();
     void set_login_error(const QString &msg);

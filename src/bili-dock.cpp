@@ -335,7 +335,8 @@ void BiliDock::init_ui()
     user_detail_label_->hide();
     user_col->addWidget(user_detail_label_);
     level_progress_ = new QProgressBar();
-    level_progress_->setFixedHeight(10);
+    // 进度条需要容纳经验文字；10px 高度会导致文字与条块重叠。
+    level_progress_->setFixedHeight(18);
     level_progress_->setStyleSheet(
         "QProgressBar {"
         "  background:#2d2d2d; border:1px solid #444; border-radius:4px;"
@@ -492,22 +493,40 @@ void BiliDock::init_ui()
     splitter->setCollapsible(1, false);
     splitter->setHandleWidth(6);
     splitter->setStyleSheet("QSplitter::handle { background:#3a3a3a; }");
-    reset_upper_height();
-    splitter->setSizes({upper_->height(), 320});   // 初始：上部按内容高度，弹幕区 320px，之后可拖拽
     main->addWidget(splitter);
     main->addLayout(bottom_row);
 
     set_logged_out();
+
+    // dock 尚未加入 OBS 主窗口时没有最终尺寸，立即测量会拿到未布局的默认值，
+    // 等布局完成后再测量一次，并按“上区内容高度 / 弹幕区 320”分配；
+    // 空间不足时 setSizes 按约束缩放，弹幕区（无最小高度）先被压缩，设置区不受挤压。
+    QTimer::singleShot(0, this, [this, splitter]() {
+        splitter->setSizes({reset_upper_height(), 320});
+    });
 }
 
-// 锁定上部设置区高度为当前内容所需高度（min==max，QSplitter 拖拽只会改变弹幕区）。
-// 额外加缓冲，避免 GroupBox 标题/边框在 QSS 下被压得过紧。
+// 锁定上部设置区高度为当前内容所需高度（min==max，任何窗口高度下设置区都不被挤压，
+// QSplitter 空间变化全部由弹幕区吸收）。额外加缓冲，避免 GroupBox 标题/边框在 QSS 下被压得过紧。
 // 上区内容随登录/开播等状态变化，故在相关变化点调用刷新。
-void BiliDock::reset_upper_height()
+// 返回应用后的固定高度，供 splitter->setSizes() 做初始比例分配。
+int BiliDock::reset_upper_height()
 {
-    if (!upper_) return;
+    if (!upper_) return 0;
+
+    // 先解除上一次的固定高度，否则旧的 minimumSizeHint 可能参与本次计算。
+    upper_->setMinimumHeight(0);
+    upper_->setMaximumHeight(QWIDGETSIZE_MAX);
+
+    // show()/hide() 后布局更新可能尚未执行，先刷新布局缓存再读取尺寸。
+    if (auto *layout = upper_->layout()) {
+        layout->invalidate();
+        layout->activate();
+    }
+
     const int h = qMax(upper_->sizeHint().height(), upper_->minimumSizeHint().height());
     upper_->setFixedHeight(h + 8);
+    return h + 8;
 }
 
 // ── Login ──

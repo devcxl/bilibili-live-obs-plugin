@@ -110,7 +110,6 @@ DanmakuDisplay::DanmakuDisplay(QWidget *parent)
     list_widget_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     list_widget_->setSelectionMode(QAbstractItemView::NoSelection);
     list_widget_->setFocusPolicy(Qt::NoFocus);
-    list_widget_->setMinimumHeight(180);   // 弹幕区最小高度（可由 splitter 拖拽增大）
 
     layout->addWidget(list_widget_);
 }

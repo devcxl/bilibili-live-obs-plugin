@@ -14,6 +14,9 @@ public:
     explicit DanmakuDisplay(QWidget *parent = nullptr);
     void set_max_visible_items(int count);
 
+    // 不设最小高度：QSplitter 空间不足时由弹幕区整体收缩，保证上方设置区完整显示
+    QSize minimumSizeHint() const override { return {0, 0}; }
+
 public slots:
     void append_danmaku(const DanmakuMessage &msg);
     void append_gift(const GiftMessage &msg);
