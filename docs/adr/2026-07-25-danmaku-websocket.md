@@ -71,7 +71,7 @@
 
 ### 决定 4：指数退避重连策略（1s → 2s → 4s → ... → max 30s）
 
-> **已被取代**：本决定已由 [ADR-005](2026-09-13-danmaku-no-auto-reconnect.md) 取代。当前实现不自动重连，连接关闭即退出弹幕互动，需用户手动点击「重连」。以下内容为历史记录。
+> **已被取代**：本决定已由 [ADR-005](2026-09-13-danmaku-no-auto-reconnect.md)（后又由 [ADR-006](2026-09-13-danmaku-connection-state-machine.md) 取代）取代。当前实现为三态状态机（Closed/Connecting/Connected）：网络抖动由指数退避自动重连，手动关闭后不再重连。以下内容为历史记录。
 
 **选择**：连接断开后启动重连定时器，延迟为 `min(1000ms × 2^attempt, 30000ms)`，每次重连前重新调用 `getDanmuInfo` 获取新 token。
 

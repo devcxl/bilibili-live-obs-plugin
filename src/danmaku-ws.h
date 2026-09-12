@@ -100,11 +100,20 @@ Q_DECLARE_METATYPE(LikeMessage)
 Q_DECLARE_METATYPE(EntryMessage)
 
 // ─── B站开放平台 (Open Live) 官方长连接客户端 ───
-// 生命周期约定：不自动重连。连接被关闭/请求失败即退出本次弹幕互动会话
-// （停心跳、结束官方项目），需要用户手动重连才会重新建立。
+// 生命周期约定：
+//   * 用户开启弹幕互动后，网络抖动/对端关闭会触发指数退避自动重连；
+//   * 用户主动关闭（disconnect_from_room）后不再自动重连。
 class DanmakuWebSocket : public QObject {
     Q_OBJECT
 public:
+    // 连接状态（驱动 UI：按钮文案 / 可用性）
+    enum class State {
+        Closed,      // 已关闭：未建立连接且无重连计划
+        Connecting,  // 连接中：握手/鉴权中，或处于重连退避等待
+        Connected,   // 已连接：鉴权成功，正常接收弹幕
+    };
+    Q_ENUM(State)
+
     explicit DanmakuWebSocket(QObject *parent = nullptr);
     ~DanmakuWebSocket() override;
 
@@ -116,6 +125,7 @@ public:
     void connect_to_room(const std::string &room_id = "");
     void disconnect_from_room();
     [[nodiscard]] bool is_connected() const;
+    [[nodiscard]] State state() const { return state_; }
     [[nodiscard]] int popularity() const;
 
 signals:
@@ -125,7 +135,7 @@ signals:
     void guard_received(const GuardMessage &msg);
     void like_received(const LikeMessage &msg);
     void entry_received(const EntryMessage &msg);
-    void connection_state_changed(bool connected, int popularity);
+    void connection_state_changed(DanmakuWebSocket::State state, int popularity);
 
 private slots:
     void on_ws_connected();
@@ -135,12 +145,17 @@ private slots:
     void on_ws_ssl_errors(const QList<QSslError> &errors);
     void send_heartbeat();
     void send_open_http_heartbeat();
+    void attempt_reconnect();
 
 private:
     void send_auth_packet();
     void start_heartbeat();
     void stop_heartbeat();
-    void end_session();   // 连接关闭后终止本次弹幕互动（不自动重连）
+    void set_state(State state);
+    void start_connect_attempt();              // 发起一次 start_app + WSS 连接
+    void release_open_project();               // 异步结束官方项目会话
+    void schedule_reconnect(int base_delay_ms = RECONNECT_BASE_DELAY_MS);
+    void stop_reconnect();
 
     void connect_async(uint64_t gen);
 
@@ -148,6 +163,7 @@ private:
     QWebSocket *ws_ = nullptr;
     QTimer *heartbeat_timer_ = nullptr;
     QTimer *open_heartbeat_timer_ = nullptr;
+    QTimer *reconnect_timer_ = nullptr;
     BilibiliApi *api_ = nullptr;
     ConfigManager *cfg_ = nullptr;
 
@@ -159,11 +175,22 @@ private:
 
     uint32_t seq_ = 1;
     int popularity_ = 0;
+    State state_ = State::Closed;
+
+    // 是否已通过鉴权，可以收发心跳与业务消息（由 state_ == Connected 派生）
     bool authenticated_ = false;
-    bool is_connecting_ = false;
-    // 本次弹幕互动会话是否处于活动状态：true 期间连接关闭/出错即视为退出互动
+
+    // 用户意图：true = 保持弹幕互动开启（断开后自动重连）；false = 已手动关闭
     bool session_active_ = false;
 
     // 连接代次：每次 connect/disconnect 递增
     std::atomic<uint64_t> connect_gen_{0};
+
+    int reconnect_attempts_ = 0;
+    // 是否有一次 start_app/WSS 连接尝试正在进行（失败回调的触发者）
+    bool attempt_in_flight_ = false;
+    static constexpr int RECONNECT_BASE_DELAY_MS = 2000;
+    static constexpr int RECONNECT_MAX_DELAY_MS = 30000;
 };
+
+Q_DECLARE_METATYPE(DanmakuWebSocket::State)

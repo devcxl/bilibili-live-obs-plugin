@@ -72,12 +72,18 @@ DanmakuDisplay::DanmakuDisplay(QWidget *parent)
         "color: #888; font-size: 11px; padding: 0 4px;");
     status_row->addWidget(status_label_);
 
-    btn_reconnect_ = new QPushButton("重连");
-    btn_reconnect_->setToolTip("重新进入弹幕互动（连接关闭后不会自动重连）");
-    btn_reconnect_->setFixedWidth(46);
-    btn_reconnect_->setStyleSheet("QPushButton { padding: 1px 4px; font-size: 11px; }");
-    connect(btn_reconnect_, &QPushButton::clicked, this, &DanmakuDisplay::reconnect_requested);
-    status_row->addWidget(btn_reconnect_);
+    btn_toggle_ = new QPushButton();
+    btn_toggle_->setFixedWidth(46);
+    btn_toggle_->setStyleSheet("QPushButton { padding: 1px 4px; font-size: 11px; }");
+    connect(btn_toggle_, &QPushButton::clicked, this, [this]() {
+        if (state_ == DanmakuWebSocket::State::Connected) {
+            emit disconnect_requested();
+        } else if (state_ == DanmakuWebSocket::State::Closed) {
+            emit reconnect_requested();
+        }
+    });
+    status_row->addWidget(btn_toggle_);
+    apply_state_to_controls();
 
     status_row->addStretch();
 
@@ -210,17 +216,41 @@ void DanmakuDisplay::set_popularity(int popularity)
         QString("人气: %1").arg(popularity));
 }
 
-void DanmakuDisplay::set_connected(bool connected)
+void DanmakuDisplay::set_connection_state(DanmakuWebSocket::State state)
 {
-    if (connected) {
+    state_ = state;
+    apply_state_to_controls();
+}
+
+// 文案与按钮跟随连接状态：已连接→可关闭，连接中→置灰，已关闭→可连接
+void DanmakuDisplay::apply_state_to_controls()
+{
+    switch (state_) {
+    case DanmakuWebSocket::State::Connected:
         status_label_->setText("[已连接]");
         status_label_->setStyleSheet(
             "color: #81C784; font-size: 11px; padding: 0 4px; font-weight: bold;");
-    } else {
-        // 连接关闭即退出弹幕互动，需用户手动点击「重连」才能重新接入
+        btn_toggle_->setText("关闭");
+        btn_toggle_->setToolTip("关闭弹幕互动（关闭后不再自动重连）");
+        btn_toggle_->setEnabled(true);
+        break;
+    case DanmakuWebSocket::State::Connecting:
+        status_label_->setText("[连接中...]");
+        status_label_->setStyleSheet(
+            "color: #FFB74D; font-size: 11px; padding: 0 4px;");
+        btn_toggle_->setText("连接中");
+        btn_toggle_->setToolTip("正在连接直播间弹幕服务，请稍候");
+        btn_toggle_->setEnabled(false);   // 置灰，避免重复触发 start_app
+        break;
+    case DanmakuWebSocket::State::Closed:
+    default:
         status_label_->setText("[已关闭]");
         status_label_->setStyleSheet(
             "color: #888; font-size: 11px; padding: 0 4px;");
+        btn_toggle_->setText("连接");
+        btn_toggle_->setToolTip("连接直播间弹幕服务，进入弹幕互动");
+        btn_toggle_->setEnabled(true);
+        break;
     }
 }
 

@@ -2,9 +2,11 @@
 
 ## 状态
 
-已接受 (Accepted) — 2026-09-13
+已被取代 (Superseded) — 由 [ADR-006](2026-09-13-danmaku-connection-state-machine.md) 取代
 
-取代 [ADR-002](2026-07-25-danmaku-websocket.md) 的「决定 4：指数退避重连策略」，并修正 [ADR-004](2026-09-02-open-live-protocol-refactoring.md) 决策 1 中「指数退避断线重连」的描述。
+> **取代原因**：本决策完全移除自动重连，导致长直播中任何一次网络抖动都会让弹幕永久中断，与实时弹幕的产品目标冲突。ADR-006 恢复指数退避自动重连，并通过三态状态机与 `session_active_` 意图标志区分「网络抖动」与「用户主动关闭」。以下内容为历史记录。
+
+取代 [ADR-002](2026-07-25-danmaku-websocket.md) 的「决定 4：指数退避重连策略」，并修正 [ADR-004](2026-09-02-open-live-protocol-refactoring.md) 决策 1 中「指数退避断线重连」的描述。（本 ADR 其后又被 [ADR-006](2026-09-13-danmaku-connection-state-machine.md) 取代）
 
 ---
 

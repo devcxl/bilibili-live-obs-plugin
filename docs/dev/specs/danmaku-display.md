@@ -1,6 +1,6 @@
 # 技术方案：实时弹幕展示功能
 
-> **部分被取代**：本方案描述的是早期 Web 端协议实现。重连策略（指数退避）已由 [ADR-005](../adr/2026-09-13-danmaku-no-auto-reconnect.md) 取代——当前实现不自动重连，连接关闭即退出弹幕互动；协议层已按 [ADR-004](../adr/2026-09-02-open-live-protocol-refactoring.md) 重构为 Open Live 官方长链。以下内容为历史记录。
+> **部分被取代**：本方案描述的是早期 Web 端协议实现。重连策略已由 [ADR-006](../adr/2026-09-13-danmaku-connection-state-machine.md) 更新为三态状态机 + 指数退避（仅手动关闭后不重连）；协议层已按 [ADR-004](../adr/2026-09-02-open-live-protocol-refactoring.md) 重构为 Open Live 官方长链。以下内容为历史记录。
 
 ## 概述
 

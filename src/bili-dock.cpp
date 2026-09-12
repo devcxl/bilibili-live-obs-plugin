@@ -94,12 +94,14 @@ void BiliDock::set_danmaku_ws(DanmakuWebSocket *ws)
         connect(ws, &DanmakuWebSocket::like_received,
                 danmaku_display_, &DanmakuDisplay::append_like);
         connect(ws, &DanmakuWebSocket::connection_state_changed,
-                this, [this](bool connected, int popularity) {
-            danmaku_display_->set_connected(connected);
+                this, [this](DanmakuWebSocket::State state, int popularity) {
+            danmaku_display_->set_connection_state(state);
             danmaku_display_->set_popularity(popularity);
         });
         connect(danmaku_display_, &DanmakuDisplay::reconnect_requested,
                 this, &BiliDock::start_danmaku);
+        connect(danmaku_display_, &DanmakuDisplay::disconnect_requested,
+                this, &BiliDock::stop_danmaku);
     }
 
     if (tts_manager_) {
@@ -791,14 +793,15 @@ void BiliDock::restore_live_state()
     }
 }
 
-// 发起弹幕连接：开播时 / 恢复开播 / 登录完成 / 手动点击重连时调用。
-// 连接关闭后不会自动重连，本次互动结束后需用户手动点击「重连」重新进入。
+// 发起弹幕连接：开播时 / 恢复开播 / 登录完成 / 已关闭状态下手动点击「连接」时调用。
+// 连接成功后若发生网络抖动会由 DanmakuWebSocket 自动退避重连；
+// 用户手动点击「关闭」则彻底停止互动且不再自动重连。
 void BiliDock::start_danmaku()
 {
     if (!danmaku_ws_ || !danmaku_display_) return;
 
-    if (danmaku_ws_->is_connected()) {
-        danmaku_display_->show();
+    if (danmaku_ws_->state() != DanmakuWebSocket::State::Closed) {
+        danmaku_display_->show();   // 已连接/连接中：仅确保面板可见
         return;
     }
 
@@ -813,16 +816,24 @@ void BiliDock::start_danmaku()
         }
     }
 
+    danmaku_display_->show();
+
     if (room_id.empty()) {
         danmaku_display_->set_status_text("[无直播间]", "color: #F28B82; font-size: 11px; padding: 0 4px;");
         blog(LOG_WARNING, "[danmaku-open] room_id unavailable, cannot enter danmaku interaction");
-        danmaku_display_->show();
         return;
     }
 
-    danmaku_display_->set_status_text("[连接中...]", "color: #FFB74D; font-size: 11px; padding: 0 4px;");
     danmaku_ws_->connect_to_room(room_id);
-    danmaku_display_->show();
+}
+
+// 手动关闭弹幕互动：断开连接、结束官方项目，且不再自动重连（面板保留可供翻阅）
+void BiliDock::stop_danmaku()
+{
+    if (!danmaku_ws_ || !danmaku_display_) return;
+
+    danmaku_ws_->disconnect_from_room();
+    danmaku_display_->set_connection_state(DanmakuWebSocket::State::Closed);
 }
 
 // 刷新当前用户信息（自动刷新静默降级；手动刷新由调用方决定是否提示失败）

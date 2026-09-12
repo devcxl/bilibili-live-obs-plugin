@@ -69,6 +69,7 @@ private:
     void apply_pending_stream_route();
     void restore_obs_stream_service();
     void start_danmaku();
+    void stop_danmaku();
 
     AuthService *auth_ = nullptr;
     LiveService *live_ = nullptr;

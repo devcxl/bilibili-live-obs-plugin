@@ -20,6 +20,8 @@ DanmakuWebSocket::DanmakuWebSocket(QObject *parent)
     heartbeat_timer_->setSingleShot(true);
     open_heartbeat_timer_ = new QTimer(this);
     open_heartbeat_timer_->setSingleShot(true);
+    reconnect_timer_ = new QTimer(this);
+    reconnect_timer_->setSingleShot(true);
 
     connect(ws_, &QWebSocket::connected, this, &DanmakuWebSocket::on_ws_connected);
     connect(ws_, &QWebSocket::disconnected, this, &DanmakuWebSocket::on_ws_disconnected);
@@ -34,6 +36,7 @@ DanmakuWebSocket::DanmakuWebSocket(QObject *parent)
     connect(ws_, &QWebSocket::sslErrors, this, &DanmakuWebSocket::on_ws_ssl_errors);
     connect(heartbeat_timer_, &QTimer::timeout, this, &DanmakuWebSocket::send_heartbeat);
     connect(open_heartbeat_timer_, &QTimer::timeout, this, &DanmakuWebSocket::send_open_http_heartbeat);
+    connect(reconnect_timer_, &QTimer::timeout, this, &DanmakuWebSocket::attempt_reconnect);
 }
 
 DanmakuWebSocket::~DanmakuWebSocket()
@@ -48,32 +51,52 @@ void DanmakuWebSocket::set_api(BilibiliApi *api) { api_ = api; }
 
 void DanmakuWebSocket::set_config(ConfigManager *cfg) { cfg_ = cfg; }
 
-bool DanmakuWebSocket::is_connected() const { return authenticated_; }
+bool DanmakuWebSocket::is_connected() const { return state_ == State::Connected; }
 
 int DanmakuWebSocket::popularity() const { return popularity_; }
 
+void DanmakuWebSocket::set_state(State state)
+{
+    if (state_ == state) return;
+    state_ = state;
+    blog(LOG_INFO, "[danmaku-open] state -> %s",
+         state == State::Connected  ? "connected"
+         : state == State::Connecting ? "connecting"
+                                      : "closed");
+    emit connection_state_changed(state_, popularity_);
+}
+
 void DanmakuWebSocket::connect_to_room(const std::string &room_id)
 {
-    // 如果当前已经建立连接且已鉴权成功，直接返回，避免破坏正常长连接
-    if (authenticated_) {
-        blog(LOG_INFO, "[danmaku-open] already connected, ignoring connect request");
-        return;
-    }
-    // 如果正在连接中，避免并发重复发起 start_app 请求导致触发 7001 冷却期
-    if (is_connecting_) {
-        blog(LOG_INFO, "[danmaku-open] connection in progress, ignoring duplicate connect request");
+    // 已连接或已在连接流程中：仅更新房间号，不打断现有连接
+    if (state_ != State::Closed) {
+        if (!room_id.empty()) room_id_ = room_id;
+        blog(LOG_INFO, "[danmaku-open] connect request ignored (state=%d)",
+             static_cast<int>(state_));
         return;
     }
 
-    is_connecting_ = true;
-    session_active_ = true;
-    room_id_ = room_id;
+    if (!room_id.empty()) room_id_ = room_id;
+    session_active_ = true;      // 用户意图：保持弹幕互动开启
+    start_connect_attempt();
+}
+
+// 发起一次连接尝试：start_app + WSS 握手，失败由 attempt 结果决定是否退避重试
+void DanmakuWebSocket::start_connect_attempt()
+{
     uint64_t my_gen = ++connect_gen_;
-
     stop_heartbeat();
+    attempt_in_flight_ = true;
+    set_state(State::Connecting);
 
     if (fetch_thread_.joinable()) {
         fetch_thread_.join();
+    }
+
+    if (!cfg_) {
+        attempt_in_flight_ = false;
+        set_state(State::Closed);
+        return;
     }
 
     blog(LOG_INFO, "[danmaku-open] initiating Open Live official start_app");
@@ -82,16 +105,30 @@ void DanmakuWebSocket::connect_to_room(const std::string &room_id)
     });
 }
 
-void DanmakuWebSocket::connect_async(uint64_t gen)
+// 异步结束官方项目会话（不阻塞 UI，失败仅记日志）
+void DanmakuWebSocket::release_open_project()
 {
-    if (!cfg_) {
-        is_connecting_ = false;
-        QMetaObject::invokeMethod(this, [this]() {
-            emit connection_state_changed(false, 0);
-        }, Qt::QueuedConnection);
+    if (open_game_id_.empty() || !cfg_) {
+        open_game_id_.clear();
+        open_auth_body_.clear();
         return;
     }
 
+    std::string gid = open_game_id_;
+    int64_t aid = cfg_->danmaku.open_live_app_id;
+    std::string ak = cfg_->danmaku.open_live_access_key;
+    std::string sk = cfg_->danmaku.open_live_secret;
+
+    open_game_id_.clear();
+    open_auth_body_.clear();
+
+    std::thread([aid, gid, ak, sk]() {
+        danmaku::OpenLiveClient::end_app(aid, gid, ak, sk);
+    }).detach();
+}
+
+void DanmakuWebSocket::connect_async(uint64_t gen)
+{
     auto res = danmaku::OpenLiveClient::start_app(
         cfg_->danmaku.open_live_app_id,
         cfg_->danmaku.open_live_access_key,
@@ -101,16 +138,22 @@ void DanmakuWebSocket::connect_async(uint64_t gen)
 
     QMetaObject::invokeMethod(this, [this, gen, res]() {
         if (gen != connect_gen_.load() || !session_active_) {
-            is_connecting_ = false;
-            return;
+            return;   // 已被新的连接尝试或手动关闭取代
         }
 
+        attempt_in_flight_ = false;   // 本次尝试已得出结论
+
         if (!res.ok) {
-            is_connecting_ = false;
             blog(LOG_WARNING, "[danmaku-open] start_app failed: %s (code=%d)",
                  res.msg.c_str(), res.code);
-            // 不自动重试：start_app 失败即退出本次弹幕互动，等待用户手动重连
-            end_session();
+            // 参数不完整属于配置错误，重试无意义，直接回到已关闭
+            if (res.msg.find("参数不完整") != std::string::npos) {
+                session_active_ = false;
+                set_state(State::Closed);
+                return;
+            }
+            // 7001 为官方冷却期，退避起点放大到 5 秒，避免加剧限流
+            schedule_reconnect(res.code == 7001 ? 5000 : RECONNECT_BASE_DELAY_MS);
             return;
         }
 
@@ -118,9 +161,9 @@ void DanmakuWebSocket::connect_async(uint64_t gen)
         open_auth_body_ = res.auth_body;
 
         if (res.wss_links.empty()) {
-            is_connecting_ = false;
             blog(LOG_WARNING, "[danmaku-open] no wss_link returned from official open platform");
-            end_session();
+            release_open_project();
+            schedule_reconnect(3000);
             return;
         }
 
@@ -137,44 +180,26 @@ void DanmakuWebSocket::connect_async(uint64_t gen)
 
 void DanmakuWebSocket::disconnect_from_room()
 {
-    session_active_ = false;
-    is_connecting_ = false;
+    session_active_ = false;      // 用户主动关闭：不再自动重连
+    attempt_in_flight_ = false;
     ++connect_gen_;
 
     stop_heartbeat();
+    stop_reconnect();
     open_heartbeat_timer_->stop();
 
-    // 优雅关闭 Open Live 官方项目
-    if (!open_game_id_.empty() && cfg_) {
-        std::string gid = open_game_id_;
-        int64_t aid = cfg_->danmaku.open_live_app_id;
-        std::string ak = cfg_->danmaku.open_live_access_key;
-        std::string sk = cfg_->danmaku.open_live_secret;
-        std::thread([aid, gid, ak, sk]() {
-            danmaku::OpenLiveClient::end_app(aid, gid, ak, sk);
-        }).detach();
-        open_game_id_.clear();
-        open_auth_body_.clear();
-    }
+    release_open_project();
 
     if (ws_->state() != QAbstractSocket::UnconnectedState) {
         ws_->abort();
     }
 
-    authenticated_ = false;
     popularity_ = 0;
     room_id_.clear();
     seq_ = 1;
+    reconnect_attempts_ = 0;
 
-    emit connection_state_changed(false, 0);
-}
-
-// 连接被对端关闭/发生错误后终止本次弹幕互动：停心跳、结束官方项目，
-// 不自动重连，等待用户点击「重连」重新发起。
-void DanmakuWebSocket::end_session()
-{
-    blog(LOG_INFO, "[danmaku-open] session ended, awaiting manual reconnect");
-    disconnect_from_room();
+    set_state(State::Closed);
 }
 
 void DanmakuWebSocket::on_ws_connected()
@@ -185,17 +210,21 @@ void DanmakuWebSocket::on_ws_connected()
 
 void DanmakuWebSocket::on_ws_disconnected()
 {
-    bool was_active = session_active_;
-    authenticated_ = false;
-    is_connecting_ = false;
     stop_heartbeat();
+    popularity_ = 0;
 
-    blog(LOG_INFO, "[danmaku-open] websocket disconnected (session_active=%d)", was_active);
+    blog(LOG_INFO, "[danmaku-open] websocket disconnected (session_active=%d)",
+         session_active_ ? 1 : 0);
 
-    if (!was_active) return;   // 主动断开：状态已由 disconnect_from_room() 收尾
+    // 主动关闭：状态已由 disconnect_from_room() 收尾
+    if (!session_active_) {
+        set_state(State::Closed);
+        return;
+    }
 
-    // 连接关闭即退出本次弹幕互动，不自动重连
-    end_session();
+    // 网络抖动或对端主动断开：自动重连（指数退避）
+    attempt_in_flight_ = false;
+    schedule_reconnect(RECONNECT_BASE_DELAY_MS);
 }
 
 void DanmakuWebSocket::on_ws_error(QAbstractSocket::SocketError error)
@@ -240,7 +269,8 @@ void DanmakuWebSocket::on_ws_binary_message(const QByteArray &data)
                 authenticated_ = true;
                 blog(LOG_INFO, "[danmaku-open] auth success! listening for official live events");
                 start_heartbeat();
-                emit connection_state_changed(true, popularity_);
+                reconnect_attempts_ = 0;   // 连接稳定，重置退避
+                set_state(State::Connected);
             } else {
                 blog(LOG_WARNING, "[danmaku-open] auth failed: %s", pkt.body.toStdString().c_str());
                 ws_->close();
@@ -249,7 +279,7 @@ void DanmakuWebSocket::on_ws_binary_message(const QByteArray &data)
             if (pkt.body.size() >= 4) {
                 popularity_ = static_cast<int>(
                     qFromBigEndian<uint32_t>(pkt.body.constData()));
-                emit connection_state_changed(true, popularity_);
+                emit connection_state_changed(State::Connected, popularity_);
             }
         } else if (pkt.op == static_cast<uint32_t>(danmaku::OpCode::Message)) {
             std::string body_str = pkt.body.toStdString();
@@ -334,4 +364,31 @@ void DanmakuWebSocket::send_open_http_heartbeat()
     open_heartbeat_timer_->start(20000);
 }
 
+// 指数退避：2s → 4s → 8s → 16s → 30s 封顶
+void DanmakuWebSocket::schedule_reconnect(int base_delay_ms)
+{
+    if (!session_active_) return;
+
+    int delay = base_delay_ms * (1 << std::min(reconnect_attempts_, 4));
+    delay = std::min(delay, RECONNECT_MAX_DELAY_MS);
+    reconnect_attempts_++;
+
+    blog(LOG_INFO, "[danmaku-open] scheduling reconnect in %d ms (attempt %d)",
+         delay, reconnect_attempts_);
+    set_state(State::Connecting);
+    reconnect_timer_->start(delay);
+}
+
+void DanmakuWebSocket::stop_reconnect()
+{
+    reconnect_timer_->stop();
+}
+
+void DanmakuWebSocket::attempt_reconnect()
+{
+    if (!session_active_) return;
+    // 已有连接尝试在进行或已建立连接：本轮交由该连接的结果继续驱动
+    if (attempt_in_flight_ || state_ == State::Connected) return;
+    start_connect_attempt();
+}
 
