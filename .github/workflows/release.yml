@@ -83,9 +83,10 @@ jobs:
           pattern: bili-live-obs-*
           merge-multiple: true
 
-      - name: create release
+      - name: create draft release
         uses: softprops/action-gh-release@v2
         with:
+          draft: true
           files: |
             *.deb
             *.pkg.tar.zst
