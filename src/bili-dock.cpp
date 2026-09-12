@@ -791,7 +791,8 @@ void BiliDock::restore_live_state()
     }
 }
 
-// 发起弹幕连接：开播时 / 恢复开播 / 登录完成 / 手动点击重连时调用
+// 发起弹幕连接：开播时 / 恢复开播 / 登录完成 / 手动点击重连时调用。
+// 连接关闭后不会自动重连，本次互动结束后需用户手动点击「重连」重新进入。
 void BiliDock::start_danmaku()
 {
     if (!danmaku_ws_ || !danmaku_display_) return;
@@ -810,6 +811,13 @@ void BiliDock::start_danmaku()
         if (it != cfg_->users.end()) {
             room_id = it->second.roomId;
         }
+    }
+
+    if (room_id.empty()) {
+        danmaku_display_->set_status_text("[无直播间]", "color: #F28B82; font-size: 11px; padding: 0 4px;");
+        blog(LOG_WARNING, "[danmaku-open] room_id unavailable, cannot enter danmaku interaction");
+        danmaku_display_->show();
+        return;
     }
 
     danmaku_display_->set_status_text("[连接中...]", "color: #FFB74D; font-size: 11px; padding: 0 4px;");
@@ -1349,7 +1357,9 @@ void BiliDock::open_danmaku_settings()
         cfg_->danmaku.max_display_count = spin_max->value();
         cfg_->save();
 
-        status_bar_->setText("开放平台设置已保存");
+        status_bar_->setText("开放平台设置已保存，正在重新进入弹幕互动");
+        // 设置变更需重建会话：先退出当前互动，再按新配置重连
+        if (danmaku_ws_) danmaku_ws_->disconnect_from_room();
         start_danmaku();
     }
 }

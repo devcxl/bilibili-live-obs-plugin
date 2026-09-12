@@ -100,6 +100,8 @@ Q_DECLARE_METATYPE(LikeMessage)
 Q_DECLARE_METATYPE(EntryMessage)
 
 // ─── B站开放平台 (Open Live) 官方长连接客户端 ───
+// 生命周期约定：不自动重连。连接被关闭/请求失败即退出本次弹幕互动会话
+// （停心跳、结束官方项目），需要用户手动重连才会重新建立。
 class DanmakuWebSocket : public QObject {
     Q_OBJECT
 public:
@@ -133,14 +135,12 @@ private slots:
     void on_ws_ssl_errors(const QList<QSslError> &errors);
     void send_heartbeat();
     void send_open_http_heartbeat();
-    void attempt_reconnect();
 
 private:
     void send_auth_packet();
     void start_heartbeat();
     void stop_heartbeat();
-    void start_reconnect(int base_delay_ms = 2000);
-    void stop_reconnect();
+    void end_session();   // 连接关闭后终止本次弹幕互动（不自动重连）
 
     void connect_async(uint64_t gen);
 
@@ -148,7 +148,6 @@ private:
     QWebSocket *ws_ = nullptr;
     QTimer *heartbeat_timer_ = nullptr;
     QTimer *open_heartbeat_timer_ = nullptr;
-    QTimer *reconnect_timer_ = nullptr;
     BilibiliApi *api_ = nullptr;
     ConfigManager *cfg_ = nullptr;
 
@@ -162,11 +161,9 @@ private:
     int popularity_ = 0;
     bool authenticated_ = false;
     bool is_connecting_ = false;
-    bool intentional_disconnect_ = false;
+    // 本次弹幕互动会话是否处于活动状态：true 期间连接关闭/出错即视为退出互动
+    bool session_active_ = false;
 
     // 连接代次：每次 connect/disconnect 递增
     std::atomic<uint64_t> connect_gen_{0};
-
-    int reconnect_attempts_ = 0;
-    static constexpr int RECONNECT_MAX_DELAY_MS = 30000;
 };

@@ -35,7 +35,7 @@
    * 自适应兼容 Web 客户端命令：`DANMU_MSG`、`SEND_GIFT`、`SUPER_CHAT_MESSAGE`、`INTERACT_WORD`、`ENTRY_EFFECT`；
    * 归一化输出统一领域事件：`DanmakuMessage`、`GiftMessage`、`SuperChatMessage`、`EntryMessage`。
 4. **网络传输与生命周期层 (`src/danmaku-ws.h/.cpp`)**：
-   * 基于 `QWebSocket`，仅负责长连接建立、握手鉴权、30 秒心跳保活与指数退避断线重连。
+   * 基于 `QWebSocket`，仅负责长连接建立、握手鉴权、30 秒心跳保活与连接关闭后的会话终止（自 [ADR-005](2026-09-13-danmaku-no-auto-reconnect.md) 起不再自动重连）。
 
 ---
 

@@ -1,5 +1,7 @@
 # 技术方案：实时弹幕展示功能
 
+> **部分被取代**：本方案描述的是早期 Web 端协议实现。重连策略（指数退避）已由 [ADR-005](../adr/2026-09-13-danmaku-no-auto-reconnect.md) 取代——当前实现不自动重连，连接关闭即退出弹幕互动；协议层已按 [ADR-004](../adr/2026-09-02-open-live-protocol-refactoring.md) 重构为 Open Live 官方长链。以下内容为历史记录。
+
 ## 概述
 
 基于 `docs/research/bilibili-live-danmaku-websocket.md` 的协议调研，在 OBS 插件的推流线路 UI 下方添加实时弹幕展示区域。核心流程：HTTP 获取 Token → QWebSocket WSS 连接 → 认证 → 心跳维持 → 解析二进制消息 → Brotli 解压 → 弹幕/礼物/SC 类型分发 → UI 展示。
