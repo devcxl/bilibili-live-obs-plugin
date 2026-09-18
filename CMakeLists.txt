@@ -4,6 +4,17 @@ project(bili-live-obs
   LANGUAGES CXX
 )
 
+# 必须在 find_package() 之前定下安装前缀：
+# GNUInstallDirs（由 obs 的 cmake 包隐式引入）会在首次使用时按当时的 prefix 把
+# CMAKE_INSTALL_LIBDIR 缓存下来，之后再改 prefix 也不会重算。若延后设置，
+# Debian 上就得不到 lib/<multiarch> 这个正确目录，插件会被装到 OBS 搜不到的路径。
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install prefix" FORCE)
+  unset(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+endif()
+
+include(GNUInstallDirs)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -107,12 +118,15 @@ set_target_properties(bili-live-obs PROPERTIES
 )
 
 # ---- install ----
+# 使用 GNUInstallDirs 的 CMAKE_INSTALL_LIBDIR，而非硬编码 lib：
+# Debian/Ubuntu 的 OBS 以 CMAKE_INSTALL_LIBDIR=lib/x86_64-linux-gnu 构建，
+# 只会在 /usr/lib/<multiarch>/obs-plugins 下扫描插件。
 install(TARGETS bili-live-obs
-  LIBRARY DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/obs-plugins"
+  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}/obs-plugins"
 )
 
 install(DIRECTORY data/
-  DESTINATION "${CMAKE_INSTALL_PREFIX}/share/obs/obs-plugins/${CMAKE_PROJECT_NAME}"
+  DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/obs/obs-plugins/${CMAKE_PROJECT_NAME}"
   OPTIONAL
 )
 
@@ -129,10 +143,5 @@ set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
 set(CPACK_GENERATOR "DEB")
 set(CPACK_DEB_COMPONENT_INSTALL ON)
 set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
-
-# For DEB packaging, install into /usr
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install prefix" FORCE)
-endif()
 
 include(CPack)
