@@ -84,10 +84,24 @@ static void dock_load()
         blog(LOG_WARNING, "[bili] no valid session on startup, showing login UI");
     }
 
+    // OBS 在 OBSBasic::OBSInit() 中就已调用 restoreState(DockState) 恢复布局，但插件是在
+    // FINISHED_LOADING 才注册 dock，此时 Qt 只在布局里留下了同名占位符。而
+    // obs_frontend_add_dock_by_id() 内部的 addDockWidget() 会主动删除该占位符，
+    // 导致 dock 位置丢失（退回默认的右侧悬浮态）。
+    // 因此在注册前后各保存/重放一次布局，让 dock 认领回自己的位置。
+    QByteArray dock_layout;
+    if (main)
+        dock_layout = main->saveState();
+
     obs_frontend_add_dock_by_id(
         "bili_live_dock",
         "B站直播工具",
         s_dock);
+
+    if (main && !dock_layout.isEmpty()) {
+        if (!main->restoreState(dock_layout))
+            blog(LOG_WARNING, "[bili] dock layout restore failed, dock may fall back to default position");
+    }
 
     s_dock->restore_live_state();
 
