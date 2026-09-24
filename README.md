@@ -11,7 +11,7 @@ C++ 原生 OBS 插件，提供 B站直播控制面板：扫码登录、标题/�
 从 [Releases](https://github.com/devcxl/bilibili_live_obs_plugin/releases) 下载 `.deb` 包：
 
 ```bash
-sudo dpkg -i bili-live-obs_*.deb
+sudo dpkg -i bilibili-live-obs_*.deb
 ```
 
 ### AUR (Arch Linux)
@@ -33,7 +33,7 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 
 # 安装
-sudo cp build/libbili-live-obs.so /usr/lib/obs-plugins/
+sudo cp build/libbilibili-live-obs.so /usr/lib/obs-plugins/
 ```
 
 ## 使用
