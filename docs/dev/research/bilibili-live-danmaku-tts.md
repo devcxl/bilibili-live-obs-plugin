@@ -571,7 +571,7 @@ S31/S32 对 Melo 的模型元数据和转换路径提供了一手线索，权威
 | S18 | blivechat-tts | xfgryujk | 2025-12-08（调研时页面记录） | https://github.com/xfgryujk/blivechat-tts |
 | S19 | kinoko7danmaku | MerlinCN | 2026-08-01（调研时页面记录） | https://github.com/MerlinCN/kinoko7danmaku |
 | S20 | edge-tts | rany2 | 持续维护至 2026-09-01 | https://github.com/rany2/edge-tts |
-| S21 | 本仓库弹幕结构与信号 | bili-live-obs | 当前代码 | `src/danmaku-ws.h`、`src/bili-dock.cpp`、`docs/adr/2026-07-25-danmaku-websocket.md` |
+| S21 | 本仓库弹幕结构与信号 | bilibili-live-obs-plugin | 当前代码 | `src/danmaku-ws.h`、`src/bili-dock.cpp`、`docs/adr/2026-07-25-danmaku-websocket.md` |
 | S22 | 流式文本语音合成 | 腾讯云 | **2026-03-27** | https://cloud.tencent.com/document/product/1073/108595 |
 | S23 | 语音合成计费概述（在线版） | 腾讯云 | **2026-08-10** | https://cloud.tencent.com/document/product/1073/34112 |
 | S24 | TencentCloud speech SDK for C++ | 腾讯云 | 日期未标 | https://github.com/TencentCloud/tencentcloud-speech-sdk-cpp |

@@ -5,7 +5,7 @@ labels: ["backend"]
 worktree_root: ".worktree/task-02-api-get-danmu-info/"
 test_commands: []
 verify_commands:
-  - "cmake --build build --target bili-live-obs 2>&1 | tail -5"
+  - "cmake --build build --target bilibili-live-obs 2>&1 | tail -5"
 tdd:
   mode: manual
   min_cycles: 1
@@ -83,7 +83,7 @@ ApiResult BilibiliApi::get_danmu_info(const std::string &room_id)
 ### 步骤 3：验证编译
 
 ```bash
-cmake --build build --target bili-live-obs 2>&1 | tail -5
+cmake --build build --target bilibili-live-obs 2>&1 | tail -5
 ```
 
 预期：编译通过（linker 可能因 danmaku-ws.cpp 和 danmaku-display.cpp 无实现报 undefined symbol，属预期）。

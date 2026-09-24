@@ -5,7 +5,7 @@ labels: ["frontend"]
 worktree_root: ".worktree/task-04-danmaku-display/"
 test_commands: []
 verify_commands:
-  - "cmake --build build --target bili-live-obs 2>&1 | tail -5"
+  - "cmake --build build --target bilibili-live-obs 2>&1 | tail -5"
 tdd:
   mode: manual
   min_cycles: 1
@@ -219,7 +219,7 @@ void DanmakuDisplay::clear_all()
 ### 步骤 5：验证编译
 
 ```bash
-cmake --build build --target bili-live-obs 2>&1 | tail -5
+cmake --build build --target bilibili-live-obs 2>&1 | tail -5
 ```
 
 预期：编译通过。如果 linker 报 undefined symbol to `DanmakuWebSocket` 方法（danmaku-ws.cpp 缺实现），属预期 — Task 3 完成后解决。

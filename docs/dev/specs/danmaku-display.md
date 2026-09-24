@@ -305,12 +305,12 @@ set(HEADERS
 )
 
 # target_include_directories 新增
-target_include_directories(bili-live-obs PRIVATE
+target_include_directories(bilibili-live-obs PRIVATE
   ${LIBBROTLI_INCLUDE_DIRS}     # 新增
 )
 
 # target_link_libraries 新增
-target_link_libraries(bili-live-obs PRIVATE
+target_link_libraries(bilibili-live-obs PRIVATE
   ${LIBBROTLI_LIBRARIES}        # 新增
 )
 

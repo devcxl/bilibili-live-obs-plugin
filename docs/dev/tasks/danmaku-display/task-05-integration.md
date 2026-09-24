@@ -5,7 +5,7 @@ labels: ["frontend", "backend"]
 worktree_root: ".worktree/task-05-integration/"
 test_commands: []
 verify_commands:
-  - "cmake --build build --target bili-live-obs 2>&1 | tail -5"
+  - "cmake --build build --target bilibili-live-obs 2>&1 | tail -5"
 tdd:
   mode: manual
   min_cycles: 1
@@ -163,10 +163,10 @@ if (danmaku_ws_) {
 ### 步骤 10：验证编译
 
 ```bash
-cmake --build build --target bili-live-obs 2>&1 | tail -5
+cmake --build build --target bilibili-live-obs 2>&1 | tail -5
 ```
 
-预期：编译完全通过，无 undefined symbol 错误，生成 `libbili-live-obs.so`。
+预期：编译完全通过，无 undefined symbol 错误，生成 `libbilibili-live-obs.so`。
 
 ## 完整 `plugin-main.cpp` 变更后的全局变量区域（供参考）
 

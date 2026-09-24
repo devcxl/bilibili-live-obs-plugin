@@ -5,7 +5,7 @@ labels: ["backend"]
 worktree_root: ".worktree/task-03-danmaku-ws/"
 test_commands: []
 verify_commands:
-  - "cmake --build build --target bili-live-obs 2>&1 | tail -5"
+  - "cmake --build build --target bilibili-live-obs 2>&1 | tail -5"
 tdd:
   mode: manual
   min_cycles: 1
@@ -531,7 +531,7 @@ size_t DanmakuWebSocket::cached_message_count() const
 ### 步骤 12：验证编译
 
 ```bash
-cmake --build build --target bili-live-obs 2>&1 | tail -5
+cmake --build build --target bilibili-live-obs 2>&1 | tail -5
 ```
 
 预期：编译通过（可能因 danmaku-display.cpp 缺实现报 undefined symbol，属预期）。

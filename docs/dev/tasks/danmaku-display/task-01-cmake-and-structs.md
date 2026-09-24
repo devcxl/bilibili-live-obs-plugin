@@ -5,7 +5,7 @@ labels: ["backend"]
 worktree_root: ".worktree/task-01-cmake-and-structs/"
 test_commands: []
 verify_commands:
-  - "cmake --build build --target bili-live-obs 2>&1 | tail -5"
+  - "cmake --build build --target bilibili-live-obs 2>&1 | tail -5"
 tdd:
   mode: manual
   min_cycles: 1
@@ -149,7 +149,7 @@ ${LIBBROTLI_CFLAGS_OTHER}
 ### 步骤 8：验证编译
 
 ```bash
-cmake --build build --target bili-live-obs 2>&1 | tail -5
+cmake --build build --target bilibili-live-obs 2>&1 | tail -5
 ```
 
 预期：cmake 配置成功，编译通过。可能 linker 报 undefined symbol（因为 danmaku-ws.cpp 和 danmaku-display.cpp 尚无实现），属于预期行为 — Task 3/4 完成后解决。

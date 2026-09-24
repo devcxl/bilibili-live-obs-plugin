@@ -2,7 +2,7 @@
 
 ## 研究结论摘要
 
-B站直播弹幕**确实通过 WebSocket 协议**实时推送。核心流程：**HTTP 获取 Token → WebSocket 连接 → 认证 → 心跳维持 → 解析二进制消息**。当前项目（bili-live-obs）已有 WBI 签名、buvid3 等基础设施，但完全没有 WebSocket / 弹幕相关实现，需要从零搭建。
+B站直播弹幕**确实通过 WebSocket 协议**实时推送。核心流程：**HTTP 获取 Token → WebSocket 连接 → 认证 → 心跳维持 → 解析二进制消息**。当前项目（bilibili-live-obs-plugin）已有 WBI 签名、buvid3 等基础设施，但完全没有 WebSocket / 弹幕相关实现，需要从零搭建。
 
 ---
 
