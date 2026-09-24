@@ -5,7 +5,7 @@ project(bilibili-live-obs-plugin
 )
 
 # 安装名（target 名 / .so 文件名 / OBS 数据目录名）与项目名不同：
-# 项目名 bilibili-live-obs-plugin 标识仓库与 AUR 包，安装名 bilibili-live-obs 是 OBS 侧
+# 项目名 bilibili-live-obs-plugin 标识仓库与发布包，安装名 bilibili-live-obs 是 OBS 侧
 # 约定名称（libbilibili-live-obs.so → 模块 bilibili-live-obs，与数据目录一一对应）。
 set(PLUGIN_NAME "bilibili-live-obs")
 

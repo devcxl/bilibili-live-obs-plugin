@@ -14,27 +14,17 @@ C++ 原生 OBS 插件，提供 B站直播控制面板：扫码登录、标题/�
 sudo dpkg -i bilibili-live-obs_*.deb
 ```
 
-### AUR (Arch Linux)
-
-```bash
-# 旧包名为 bili-live-obs，若装过请先卸载（见下方升级说明）
-yay -S bilibili-live-obs-plugin
-```
-
 ### 从旧版本升级（包名与安装路径已变更）
 
 旧版本使用 `bili-live-obs` / `libbili-live-obs.so` / `/usr/share/obs/obs-plugins/bili-live-obs`，
 必须先卸载，否则会与新版插件同时加载并冲突：
 
 ```bash
-# DEB (Ubuntu/Debian)：dpkg -r 会移除包内文件（/usr/lib/<multiarch>/obs-plugins/libbili-live-obs.so）
+# dpkg -r 会移除包内文件（/usr/lib/<multiarch>/obs-plugins/libbili-live-obs.so）
 sudo dpkg -r bili-live-obs
 # 若曾手动拷贝过插件或数据目录，一并清理
 sudo rm -f /usr/lib/obs-plugins/libbili-live-obs.so
 sudo rm -rf /usr/share/obs/obs-plugins/bili-live-obs
-
-# AUR (Arch Linux)
-sudo pacman -Rns bili-live-obs
 ```
 
 > 另：加密 salt 已变更，升级后需重新扫码登录。
@@ -81,6 +71,6 @@ sudo cp build/libbilibili-live-obs.so /usr/lib/obs-plugins/
 │   ├── bilibili-api.h/.cpp   # HTTP 客户端 + B站 API
 │   ├── auth-service.h/.cpp   # 登录/用户/直播服务
 │   └── bili-dock.h/.cpp      # Qt5 面板 UI
-├── aur/PKGBUILD             # Arch Linux 打包
-└── .github/workflows/       # CI 自动构建 + Release
+├── data/                     # locale 等运行时数据
+└── .github/workflows/        # CI 自动构建 + Release
 ```
