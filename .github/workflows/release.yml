@@ -41,41 +41,8 @@ jobs:
           name: bilibili-live-obs-deb
           path: build/bilibili-live-obs_*.deb
 
-  build-aur:
-    runs-on: ubuntu-24.04
-    container:
-      image: archlinux:latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: install build tools
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed \
-            base-devel cmake ninja git pkgconf \
-            obs-studio qt5-base curl qrencode openssl
-
-      - name: build aur package
-        run: |
-          TAG=${GITHUB_REF#refs/tags/v}
-          useradd -m builder
-          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
-          cp aur/PKGBUILD .
-          sed -i "s/pkgver=.*/pkgver=${TAG}/" PKGBUILD
-          chown -R builder:builder .
-          sudo -u builder bash -c '
-            export HOME=/home/builder
-            makepkg -s --noconfirm
-          '
-
-      - name: upload aur
-        uses: actions/upload-artifact@v4
-        with:
-          name: bilibili-live-obs-plugin-aur
-          path: bilibili-live-obs-plugin-*.pkg.tar.zst
-
   release:
-    needs: [build-deb, build-aur]
+    needs: [build-deb]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -88,5 +55,4 @@ jobs:
           draft: true
           files: |
             *.deb
-            *.pkg.tar.zst
           generate_release_notes: true
