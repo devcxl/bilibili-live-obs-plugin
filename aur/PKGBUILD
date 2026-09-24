@@ -5,11 +5,11 @@ pkgver=0.0.0
 pkgrel=1
 pkgdesc="B站直播工具 OBS 插件 - 扫码登录/开播/停播/分区管理"
 arch=('x86_64')
-url="https://github.com/devcxl/bilibili_live_obs_plugin"
+url="https://github.com/devcxl/bilibili-live-obs-plugin"
 license=('MIT')
 depends=('obs-studio>=30.0' 'qt6-base' 'qt6-websockets' 'qt6-multimedia' 'libcurl-gnutls' 'qrencode' 'openssl' 'brotli')
 makedepends=('cmake>=3.22' 'gcc' 'ninja' 'git' 'pkgconf')
-source=("${pkgname}::git+https://github.com/devcxl/bilibili_live_obs_plugin.git#tag=v${pkgver}")
+source=("${pkgname}::git+https://github.com/devcxl/bilibili-live-obs-plugin.git#tag=v${pkgver}")
 sha256sums=('SKIP')
 
 build() {

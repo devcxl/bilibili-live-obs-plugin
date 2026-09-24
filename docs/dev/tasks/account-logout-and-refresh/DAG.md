@@ -28,4 +28,4 @@ graph TD
 
 - **PRD**: `docs/prd/account-logout-and-refresh.md`
 - **技术方案**: `docs/dev/specs/account-logout-and-refresh.md`
-- **Parent Issue**: [#1](https://github.com/devcxl/bilibili_live_obs_plugin/issues/1)
+- **Parent Issue**: [#1](https://github.com/devcxl/bilibili-live-obs-plugin/issues/1)

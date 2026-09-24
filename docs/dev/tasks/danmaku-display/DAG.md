@@ -50,4 +50,4 @@ graph TD
 - **PRD**: `docs/prd/` （缺少独立 PRD，需求在 task 描述中）
 - **技术方案**: `docs/dev/specs/danmaku-display.md`
 - **ADR**: `docs/adr/2026-07-25-danmaku-websocket.md`
-- **Parent Issue**: [#6](https://github.com/devcxl/bilibili_live_obs_plugin/issues/6)
+- **Parent Issue**: [#6](https://github.com/devcxl/bilibili-live-obs-plugin/issues/6)

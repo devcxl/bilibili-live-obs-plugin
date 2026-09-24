@@ -8,7 +8,7 @@ C++ 原生 OBS 插件，提供 B站直播控制面板：扫码登录、标题/�
 
 ### DEB (Ubuntu/Debian)
 
-从 [Releases](https://github.com/devcxl/bilibili_live_obs_plugin/releases) 下载 `.deb` 包：
+从 [Releases](https://github.com/devcxl/bilibili-live-obs-plugin/releases) 下载 `.deb` 包：
 
 ```bash
 sudo dpkg -i bilibili-live-obs_*.deb
@@ -17,8 +17,27 @@ sudo dpkg -i bilibili-live-obs_*.deb
 ### AUR (Arch Linux)
 
 ```bash
+# 旧包名为 bili-live-obs，若装过请先卸载（见下方升级说明）
 yay -S bilibili-live-obs-plugin
 ```
+
+### 从旧版本升级（包名与安装路径已变更）
+
+旧版本使用 `bili-live-obs` / `libbili-live-obs.so` / `/usr/share/obs/obs-plugins/bili-live-obs`，
+必须先卸载，否则会与新版插件同时加载并冲突：
+
+```bash
+# DEB (Ubuntu/Debian)：dpkg -r 会移除包内文件（/usr/lib/<multiarch>/obs-plugins/libbili-live-obs.so）
+sudo dpkg -r bili-live-obs
+# 若曾手动拷贝过插件或数据目录，一并清理
+sudo rm -f /usr/lib/obs-plugins/libbili-live-obs.so
+sudo rm -rf /usr/share/obs/obs-plugins/bili-live-obs
+
+# AUR (Arch Linux)
+sudo pacman -Rns bili-live-obs
+```
+
+> 另：加密 salt 已变更，升级后需重新扫码登录。
 
 ### 从源码编译
 

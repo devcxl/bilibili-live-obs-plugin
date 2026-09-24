@@ -4,7 +4,7 @@
 
 ## 元信息
 - **PRD**: `docs/prd/account-logout-and-refresh.md`
-- **Issue**: [#1](https://github.com/devcxl/bilibili_live_obs_plugin/issues/1)
+- **Issue**: [#1](https://github.com/devcxl/bilibili-live-obs-plugin/issues/1)
 - **版本**: v1.0
 - **状态**: 设计完成
 
