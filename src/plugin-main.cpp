@@ -16,7 +16,7 @@
 #include "tts/tts-manager.h"
 
 OBS_DECLARE_MODULE()
-OBS_MODULE_USE_DEFAULT_LOCALE("bili-live-obs", "en-US")
+OBS_MODULE_USE_DEFAULT_LOCALE("bilibili-live-obs", "en-US")
 
 static BiliDock *s_dock = nullptr;
 static BilibiliApi *s_api = nullptr;
@@ -154,7 +154,7 @@ static void on_frontend_event(enum obs_frontend_event event, void *)
 
 bool obs_module_load(void)
 {
-    blog(LOG_INFO, "[bili-live-obs] version %s loaded", PROJECT_VERSION);
+    blog(LOG_INFO, "[bilibili-live-obs] version %s loaded", PROJECT_VERSION);
 
     obs_frontend_add_event_callback(on_frontend_event, nullptr);
     return true;
@@ -162,5 +162,5 @@ bool obs_module_load(void)
 
 void obs_module_unload(void)
 {
-    blog(LOG_INFO, "[bili-live-obs] unloaded");
+    blog(LOG_INFO, "[bilibili-live-obs] unloaded");
 }

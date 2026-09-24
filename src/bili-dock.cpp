@@ -180,7 +180,7 @@ bool BiliDock::configure_obs_stream(const std::string &server, const std::string
     obs_data_set_string(settings, "key", key.c_str());
 
     obs_service_t *service = obs_service_create(
-        "rtmp_custom", "bili-live-obs-service", settings, nullptr);
+        "rtmp_custom", "bilibili-live-obs-service", settings, nullptr);
     obs_data_release(settings);
     if (!service) {
         if (first_override) {

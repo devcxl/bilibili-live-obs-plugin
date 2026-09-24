@@ -55,7 +55,7 @@ static const int TOTAL_KEY_LEN = 32; // encryption_key(16) + hmac_key(16)
 static std::vector<unsigned char> derive_key(const std::string &base_key)
 {
     // 使用 PBKDF2-HMAC-SHA1 派生 32 字节密钥（前 16 字节 AES-128 加密，后 16 字节 HMAC-SHA256 签名）
-    const unsigned char salt[] = "bili-live-obs-salt";
+    const unsigned char salt[] = "bilibili-live-obs-salt";
     std::vector<unsigned char> derived(TOTAL_KEY_LEN);
     PKCS5_PBKDF2_HMAC_SHA1(
         base_key.data(), static_cast<int>(base_key.size()),
