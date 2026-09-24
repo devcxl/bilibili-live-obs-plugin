@@ -138,10 +138,10 @@ install(DIRECTORY data/
 # ---- CPack / DEB ----
 set(CPACK_PACKAGE_NAME "${PLUGIN_NAME}")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-set(CPACK_PACKAGE_VENDOR "BiliLiveOBS")
+set(CPACK_PACKAGE_VENDOR "bilibili-live-obs-plugin")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "B站直播工具 OBS 插件 - 扫码登录/开播/停播/分区管理")
 set(CPACK_PACKAGE_CONTACT "https://github.com/${GITHUB_REPOSITORY}")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "BiliLiveOBS")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "bilibili-live-obs-plugin")
 set(CPACK_DEBIAN_PACKAGE_SECTION "video")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "obs-studio (>= 30.0), libqt6widgets6, libqt6network6, libqt6websockets6, libqt6multimedia6, libcurl4, libqrencode4, libssl3, libbrotli1")
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
