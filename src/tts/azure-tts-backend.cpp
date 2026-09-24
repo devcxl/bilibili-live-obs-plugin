@@ -71,7 +71,7 @@ void AzureTtsBackend::synthesize(const QString &text)
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/ssml+xml");
     request.setRawHeader("Ocp-Apim-Subscription-Key", config_.key.trimmed().toUtf8());
     request.setRawHeader("X-Microsoft-OutputFormat", config_.format.toUtf8());
-    request.setRawHeader("User-Agent", "BilibiliLiveObsPlugin-TTS/1.0");
+    request.setRawHeader("User-Agent", "bilibili-live-obs-plugin/1.0");
 
     QString ssml = build_ssml(text, config_.voice, config_.rate, config_.pitch);
     QByteArray ssml_bytes = ssml.toUtf8();
