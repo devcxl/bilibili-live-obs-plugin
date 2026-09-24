@@ -108,14 +108,14 @@ UserData UserData::from_json(const json &j)
 
 std::string ConfigManager::config_dir()
 {
-    const char *env = std::getenv("BILILIVE_CONFIG_HOME");
+    const char *env = std::getenv("BILIBILI_LIVE_OBS_CONFIG_HOME");
     if (env) return env;
 
     const char *xdg = std::getenv("XDG_CONFIG_HOME");
-    if (xdg) return std::string(xdg) + "/BiliLiveTool";
+    if (xdg) return std::string(xdg) + "/bilibili-live-obs";
 
     const char *home = std::getenv("HOME");
-    if (home) return std::string(home) + "/.config/BiliLiveTool";
+    if (home) return std::string(home) + "/.config/bilibili-live-obs";
 
     return ".";
 }
