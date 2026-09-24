@@ -71,8 +71,8 @@ jobs:
       - name: upload aur
         uses: actions/upload-artifact@v4
         with:
-          name: bili-live-obs-aur
-          path: bili-live-obs-*.pkg.tar.zst
+          name: bilibili-live-obs-plugin-aur
+          path: bilibili-live-obs-plugin-*.pkg.tar.zst
 
   release:
     needs: [build-deb, build-aur]
@@ -80,7 +80,6 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: bili-live-obs-*
           merge-multiple: true
 
       - name: create draft release

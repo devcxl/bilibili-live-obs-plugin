@@ -1,6 +1,6 @@
 # Maintainer: BiliLiveOBS
 
-pkgname=bili-live-obs
+pkgname=bilibili-live-obs-plugin
 pkgver=0.0.0
 pkgrel=1
 pkgdesc="B站直播工具 OBS 插件 - 扫码登录/开播/停播/分区管理"

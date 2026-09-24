@@ -17,7 +17,7 @@ sudo dpkg -i bili-live-obs_*.deb
 ### AUR (Arch Linux)
 
 ```bash
-yay -S bili-live-obs
+yay -S bilibili-live-obs-plugin
 ```
 
 ### 从源码编译
