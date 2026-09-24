@@ -1,6 +1,6 @@
 # B站直播工具 — OBS 插件
 
-![](docs/img/bilibili_live_steam_code_demo.png)
+![](docs/img/bilibili-live-obs-demo.png)
 
 C++ 原生 OBS 插件，提供 B站直播控制面板：扫码登录、标题/分区设置、一键开播/停播、RTMP 推流信息、实时弹幕显示。
 
