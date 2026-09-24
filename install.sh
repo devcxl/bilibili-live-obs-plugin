@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PLUGIN_NAME="bili-live-obs"
+PLUGIN_NAME="bilibili-live-obs"
 BUILD_DIR="build"
 OBS_PLUGIN_DIR="/usr/lib/obs-plugins"
 OBS_DATA_DIR="/usr/share/obs/obs-plugins/${PLUGIN_NAME}"

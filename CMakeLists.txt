@@ -1,8 +1,13 @@
 cmake_minimum_required(VERSION 3.22)
-project(bili-live-obs
+project(bilibili-live-obs-plugin
   VERSION 0.6.0
   LANGUAGES CXX
 )
+
+# 安装名（target 名 / .so 文件名 / OBS 数据目录名）与项目名不同：
+# 项目名 bilibili-live-obs-plugin 标识仓库与 AUR 包，安装名 bilibili-live-obs 是 OBS 侧
+# 约定名称（libbilibili-live-obs.so → 模块 bilibili-live-obs，与数据目录一一对应）。
+set(PLUGIN_NAME "bilibili-live-obs")
 
 # 必须在 find_package() 之前定下安装前缀：
 # GNUInstallDirs（由 obs 的 cmake 包隐式引入）会在首次使用时按当时的 prefix 把
@@ -82,9 +87,9 @@ set(HEADERS
 )
 
 # ---- target ----
-add_library(bili-live-obs MODULE ${SOURCES} ${HEADERS})
+add_library(${PLUGIN_NAME} MODULE ${SOURCES} ${HEADERS})
 
-target_include_directories(bili-live-obs PRIVATE
+target_include_directories(${PLUGIN_NAME} PRIVATE
   ${NLOHMANN_INCLUDE_DIR}
   ${LIBCURL_INCLUDE_DIRS}
   ${LIBQRENCODE_INCLUDE_DIRS}
@@ -92,7 +97,7 @@ target_include_directories(bili-live-obs PRIVATE
   ${LIBBROTLI_INCLUDE_DIRS}
 )
 
-target_link_libraries(bili-live-obs PRIVATE
+target_link_libraries(${PLUGIN_NAME} PRIVATE
   OBS::libobs
   OBS::obs-frontend-api
   Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::WebSockets Qt6::Multimedia
@@ -104,7 +109,7 @@ target_link_libraries(bili-live-obs PRIVATE
   ${LIBBROTLI_LIBRARIES}
 )
 
-target_compile_definitions(bili-live-obs PRIVATE
+target_compile_definitions(${PLUGIN_NAME} PRIVATE
   ${LIBCURL_CFLAGS_OTHER}
   ${LIBQRENCODE_CFLAGS_OTHER}
   ${OPENSSL_CFLAGS_OTHER}
@@ -112,7 +117,7 @@ target_compile_definitions(bili-live-obs PRIVATE
   PROJECT_VERSION="${PROJECT_VERSION}"
 )
 
-set_target_properties(bili-live-obs PROPERTIES
+set_target_properties(${PLUGIN_NAME} PROPERTIES
   CXX_VISIBILITY_PRESET hidden
   VISIBILITY_INLINES_HIDDEN ON
 )
@@ -121,17 +126,17 @@ set_target_properties(bili-live-obs PROPERTIES
 # 使用 GNUInstallDirs 的 CMAKE_INSTALL_LIBDIR，而非硬编码 lib：
 # Debian/Ubuntu 的 OBS 以 CMAKE_INSTALL_LIBDIR=lib/x86_64-linux-gnu 构建，
 # 只会在 /usr/lib/<multiarch>/obs-plugins 下扫描插件。
-install(TARGETS bili-live-obs
+install(TARGETS ${PLUGIN_NAME}
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}/obs-plugins"
 )
 
 install(DIRECTORY data/
-  DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/obs/obs-plugins/${CMAKE_PROJECT_NAME}"
+  DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/obs/obs-plugins/${PLUGIN_NAME}"
   OPTIONAL
 )
 
 # ---- CPack / DEB ----
-set(CPACK_PACKAGE_NAME "bili-live-obs")
+set(CPACK_PACKAGE_NAME "${PLUGIN_NAME}")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_VENDOR "BiliLiveOBS")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "B站直播工具 OBS 插件 - 扫码登录/开播/停播/分区管理")
