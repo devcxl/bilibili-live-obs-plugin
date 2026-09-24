@@ -44,10 +44,10 @@ static void init_services()
     s_user->init_current_user();
 
     if (s_user->has_valid_session()) {
-        blog(LOG_INFO, "[bili] session restored, uid=%s room=%s",
+        blog(LOG_INFO, "[bilibili-live-obs] session restored, uid=%s room=%s",
              s_state->uid.c_str(), s_state->room_id.c_str());
     } else {
-        blog(LOG_WARNING, "[bili] no valid session, need re-login");
+        blog(LOG_WARNING, "[bilibili-live-obs] no valid session, need re-login");
     }
 }
 
@@ -81,7 +81,7 @@ static void dock_load()
                 QJsonDocument::fromJson(QByteArray::fromStdString(data.dump())).object());
         }
     } else {
-        blog(LOG_WARNING, "[bili] no valid session on startup, showing login UI");
+        blog(LOG_WARNING, "[bilibili-live-obs] no valid session on startup, showing login UI");
     }
 
     // OBS 在 OBSBasic::OBSInit() 中就已调用 restoreState(DockState) 恢复布局，但插件是在
@@ -94,13 +94,13 @@ static void dock_load()
         dock_layout = main->saveState();
 
     obs_frontend_add_dock_by_id(
-        "bili_live_dock",
+        "bilibili_live_obs_dock",
         "B站直播工具",
         s_dock);
 
     if (main && !dock_layout.isEmpty()) {
         if (!main->restoreState(dock_layout))
-            blog(LOG_WARNING, "[bili] dock layout restore failed, dock may fall back to default position");
+            blog(LOG_WARNING, "[bilibili-live-obs] dock layout restore failed, dock may fall back to default position");
     }
 
     s_dock->restore_live_state();
