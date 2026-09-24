@@ -438,12 +438,12 @@ ApiResult BilibiliApi::update_area(const std::string &room_id, const std::string
 
 ApiResult BilibiliApi::start_live(const std::string &room_id, const std::string &area_id)
 {
-    blog(LOG_INFO, "[bili] start_live room=%s area=%s",
+    blog(LOG_INFO, "[bilibili-live-obs] start_live room=%s area=%s",
          room_id.c_str(), area_id.c_str());
 
     auto ts_res = do_get("https://api.bilibili.com/x/report/click/now");
     if (!ts_res.ok || ts_res.code != 0) {
-        blog(LOG_WARNING, "[bili] start_live: get_time failed code=%d msg=%s",
+        blog(LOG_WARNING, "[bilibili-live-obs] start_live: get_time failed code=%d msg=%s",
              ts_res.code, ts_res.msg.c_str());
         return ts_res;
     }
@@ -454,7 +454,7 @@ ApiResult BilibiliApi::start_live(const std::string &room_id, const std::string 
     auto v_res = do_get("https://api.live.bilibili.com/xlive/app-blink/v1/liveVersionInfo/getHomePageLiveVersion",
                          v_params);
     if (!v_res.ok || v_res.code != 0) {
-        blog(LOG_WARNING, "[bili] start_live: get_version failed code=%d msg=%s",
+        blog(LOG_WARNING, "[bilibili-live-obs] start_live: get_version failed code=%d msg=%s",
              v_res.code, v_res.msg.c_str());
         return v_res;
     }
@@ -474,7 +474,7 @@ ApiResult BilibiliApi::start_live(const std::string &room_id, const std::string 
         {"ts", ts}
     });
     auto result = do_post("https://api.live.bilibili.com/room/v1/Room/startLive", post_data);
-    blog(LOG_INFO, "[bili] start_live result: ok=%d code=%d msg=%s",
+    blog(LOG_INFO, "[bilibili-live-obs] start_live result: ok=%d code=%d msg=%s",
          result.ok, result.code, result.msg.c_str());
     return result;
 }
