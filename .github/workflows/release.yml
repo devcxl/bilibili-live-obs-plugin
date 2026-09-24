@@ -38,8 +38,8 @@ jobs:
       - name: upload deb
         uses: actions/upload-artifact@v4
         with:
-          name: bili-live-obs-deb
-          path: build/bili-live-obs_*.deb
+          name: bilibili-live-obs-deb
+          path: build/bilibili-live-obs_*.deb
 
   build-aur:
     runs-on: ubuntu-24.04
