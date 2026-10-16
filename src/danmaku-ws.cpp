@@ -145,8 +145,13 @@ void DanmakuWebSocket::on_start_reply(QNetworkReply *reply, uint64_t gen)
     if (!res.ok) {
         blog(LOG_WARNING, "[danmaku-open] start_app failed: %s (code=%d)",
              res.msg.c_str(), res.code);
-        // 7001 为疑似官方冷却期（未获官方文档证实），退避起点放大，避免加剧限流
-        schedule_reconnect(res.code == 7001 ? 5000 : RECONNECT_BASE_DELAY_MS);
+        // 7001 为疑似官方冷却期（未获官方文档证实）：起点与封顶对齐官方
+        // “未正常 end 需间隔 1 分钟”，避免以秒级重试持续冲击冷却期
+        if (res.code == 7001) {
+            schedule_reconnect(COOLDOWN_BACKOFF_MS, COOLDOWN_BACKOFF_MS);
+            return;
+        }
+        schedule_reconnect(RECONNECT_BASE_DELAY_MS);
         return;
     }
 

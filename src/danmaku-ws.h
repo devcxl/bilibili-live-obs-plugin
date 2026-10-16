@@ -222,6 +222,7 @@ private:
 
     static constexpr int RECONNECT_BASE_DELAY_MS = 2000;
     static constexpr int RECONNECT_MAX_DELAY_MS = 30000;
+    static constexpr int COOLDOWN_BACKOFF_MS = 60000;   // 疑似官方冷却期（7001 未验证）的退避
     static constexpr int HTTP_TRANSFER_TIMEOUT_MS = 10000;
     static constexpr int END_APP_SHUTDOWN_GRACE_MS = 1500;
     static constexpr int LINK_COOLDOWN_MS = 60000;      // 单集群冷却，避免对故障集群热循环
