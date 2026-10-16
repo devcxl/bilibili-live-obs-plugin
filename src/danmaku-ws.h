@@ -1,21 +1,23 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <string>
-#include <thread>
-#include <atomic>
 #include <vector>
+
+#include <QAbstractSocket>
 #include <QByteArray>
 #include <QMetaType>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include <QObject>
+#include <QSslError>
 #include <QTimer>
 #include <QWebSocket>
-#include <QAbstractSocket>
-#include <QSslError>
 
-#include "bilibili-api.h"
 #include "config-manager.h"
 #include "danmaku/danmaku-packet.h"
+#include "danmaku/open-live-client.h"
 
 // ─── 弹幕消息 ───
 struct DanmakuMessage {
@@ -102,7 +104,10 @@ Q_DECLARE_METATYPE(EntryMessage)
 // ─── B站开放平台 (Open Live) 官方长连接客户端 ───
 // 生命周期约定：
 //   * 用户开启弹幕互动后，网络抖动/对端关闭会触发指数退避自动重连；
-//   * 用户主动关闭（disconnect_from_room）后不再自动重连。
+//   * 用户主动关闭（disconnect_from_room）后不再自动重连；
+//   * 官方 HTTP（start_app / 项目心跳 / end_app）经 UI 线程的
+//     QNetworkAccessManager 异步执行，不阻塞、可 abort；析构时仅对在途的
+//     end_app 做有界等待（让官方场次正常关闭），不做线程 join。
 class DanmakuWebSocket : public QObject {
     Q_OBJECT
 public:
@@ -118,7 +123,6 @@ public:
     ~DanmakuWebSocket() override;
 
     // 依赖注入
-    void set_api(BilibiliApi *api);
     void set_config(ConfigManager *cfg);
 
     // 生命周期管理
@@ -152,26 +156,34 @@ private:
     void start_heartbeat();
     void stop_heartbeat();
     void set_state(State state);
-    void start_connect_attempt();              // 发起一次 start_app + WSS 连接
-    void release_open_project();               // 异步结束官方项目会话
+    void start_connect_attempt();                              // 发起 start_app 连接尝试
+    void on_start_reply(QNetworkReply *reply, uint64_t gen);   // start_app 异步回复
+    void release_open_project();                               // 异步结束官方场次（end_app）
     void schedule_reconnect(int base_delay_ms = RECONNECT_BASE_DELAY_MS);
     void stop_reconnect();
-
-    void connect_async(uint64_t gen);
+    void abort_reply(QNetworkReply *&reply);                   // abort + deleteLater 在途回复
+    void wait_for_end_app(int timeout_ms);                     // 退出时给 end_app 有界宽限
+    [[nodiscard]] danmaku::OpenLiveCredentials snapshot_credentials() const;
 
     // 成员变量
     QWebSocket *ws_ = nullptr;
     QTimer *heartbeat_timer_ = nullptr;
     QTimer *open_heartbeat_timer_ = nullptr;
     QTimer *reconnect_timer_ = nullptr;
-    BilibiliApi *api_ = nullptr;
+    QNetworkAccessManager nam_;   // UI 线程创建并使用，随本对象析构回收在途回复
     ConfigManager *cfg_ = nullptr;
 
-    std::thread fetch_thread_;
+    QNetworkReply *start_reply_ = nullptr;       // 在途 start_app
+    QNetworkReply *heartbeat_reply_ = nullptr;   // 在途项目心跳
+    QNetworkReply *end_reply_ = nullptr;         // 在途 end_app
 
     std::string room_id_;
     std::string open_game_id_;
     std::string open_auth_body_;
+
+    // 官方 HTTP 的凭据快照：attempt_ 为本次尝试，session_ 为成功建立场次后固定
+    danmaku::OpenLiveCredentials attempt_creds_;
+    danmaku::OpenLiveCredentials session_creds_;
 
     uint32_t seq_ = 1;
     int popularity_ = 0;
@@ -187,10 +199,15 @@ private:
     std::atomic<uint64_t> connect_gen_{0};
 
     int reconnect_attempts_ = 0;
-    // 是否有一次 start_app/WSS 连接尝试正在进行（失败回调的触发者）
+    // 是否有一次 start_app 连接尝试正在进行（其回复尚未返回）
     bool attempt_in_flight_ = false;
+    // 析构标记：禁止再发起任何新请求或重连
+    bool shutdown_requested_ = false;
+
     static constexpr int RECONNECT_BASE_DELAY_MS = 2000;
     static constexpr int RECONNECT_MAX_DELAY_MS = 30000;
+    static constexpr int HTTP_TRANSFER_TIMEOUT_MS = 10000;
+    static constexpr int END_APP_SHUTDOWN_GRACE_MS = 1500;
 };
 
 Q_DECLARE_METATYPE(DanmakuWebSocket::State)

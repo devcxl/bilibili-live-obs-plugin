@@ -38,7 +38,6 @@ static void init_services()
     s_live = new LiveService(s_api, s_cfg, s_state);
     s_auth = new AuthService(s_api, s_user, s_live, s_state);
     s_danmaku_ws = new DanmakuWebSocket();
-    s_danmaku_ws->set_api(s_api);
     s_danmaku_ws->set_config(s_cfg);
     s_tts = new TtsManager();
     s_user->init_current_user();
