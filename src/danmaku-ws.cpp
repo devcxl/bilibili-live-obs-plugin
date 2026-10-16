@@ -153,22 +153,20 @@ void DanmakuWebSocket::on_start_reply(QNetworkReply *reply, uint64_t gen)
     open_game_id_ = res.game_id;
     open_auth_body_ = res.auth_body;
     session_creds_ = attempt_creds_;
+    wss_links_ = res.wss_links;
+    reset_link_failover();
 
-    if (res.wss_links.empty()) {
+    blog(LOG_INFO, "[danmaku-open] start_app ok: game_id=%s, wss_link 数量=%zu",
+         open_game_id_.c_str(), wss_links_.size());
+
+    if (wss_links_.empty()) {
         blog(LOG_WARNING, "[danmaku-open] no wss_link returned from official open platform");
         release_open_project();
         schedule_reconnect(3000);
         return;
     }
 
-    const std::string &link = res.wss_links[0];
-    blog(LOG_INFO, "[danmaku-open] connecting to official websocket %s (game_id=%s)",
-         link.c_str(), open_game_id_.c_str());
-
-    // 启动官方 HTTP 项目心跳（每 20 秒发送一次）
-    open_heartbeat_timer_->start(20000);
-
-    ws_->open(QUrl(QString::fromStdString(link)));
+    open_ws_on_chosen_link();
 }
 
 void DanmakuWebSocket::disconnect_from_room()
@@ -207,28 +205,20 @@ void DanmakuWebSocket::on_ws_connected()
 
 void DanmakuWebSocket::on_ws_disconnected()
 {
-    stop_heartbeat();
-    popularity_ = 0;
-    authenticated_ = false;
-
-    blog(LOG_INFO, "[danmaku-open] websocket disconnected (session_active=%d)",
-         session_active_ ? 1 : 0);
-
-    // 主动关闭：状态已由 disconnect_from_room() 收尾
-    if (!session_active_) {
-        set_state(State::Closed);
-        return;
-    }
-
-    // 网络抖动或对端主动断开：自动重连（指数退避）
-    attempt_in_flight_ = false;
-    schedule_reconnect(RECONNECT_BASE_DELAY_MS);
+    handle_connection_lost("disconnected");
 }
 
 void DanmakuWebSocket::on_ws_error(QAbstractSocket::SocketError error)
 {
     blog(LOG_WARNING, "[danmaku-open] websocket error: %s (code=%d)",
          ws_->errorString().toUtf8().constData(), static_cast<int>(error));
+
+    // 连接从未建立时（DNS/TLS/握手失败）QWebSocket 不一定发 disconnected，
+    // 此处兜底进入统一失败处理；已建立的连接由 disconnected 负责收尾。
+    if (state_ != State::Connected &&
+        ws_->state() == QAbstractSocket::UnconnectedState) {
+        handle_connection_lost("socket error");
+    }
 }
 
 void DanmakuWebSocket::on_ws_ssl_errors(const QList<QSslError> &errors)
@@ -268,6 +258,8 @@ void DanmakuWebSocket::on_ws_binary_message(const QByteArray &data)
                 blog(LOG_INFO, "[danmaku-open] auth success! listening for official live events");
                 start_heartbeat();
                 reconnect_attempts_ = 0;   // 连接稳定，重置退避
+                reset_link_failover();
+                heartbeat_failures_ = 0;
                 set_state(State::Connected);
             } else {
                 blog(LOG_WARNING, "[danmaku-open] auth failed: %s", pkt.body.toStdString().c_str());
@@ -367,14 +359,25 @@ void DanmakuWebSocket::send_open_http_heartbeat()
             [this, game_id, reply = heartbeat_reply_]() {
         if (heartbeat_reply_ == reply) heartbeat_reply_ = nullptr;
 
+        // 断开/退出时取消的心跳不算失败
+        if (reply->error() == QNetworkReply::OperationCanceledError ||
+            !session_active_ || shutdown_requested_) {
+            reply->deleteLater();
+            return;
+        }
+
         if (reply->error() != QNetworkReply::NoError) {
             blog(LOG_WARNING, "[danmaku-open] 项目心跳请求失败: %s",
                  reply->errorString().toUtf8().constData());
+            on_heartbeat_failure(game_id);
         } else {
             auto ack = danmaku::OpenLiveClient::parse_ack(reply->readAll());
             if (!ack.ok) {
                 blog(LOG_WARNING, "[danmaku-open] 项目心跳被官方拒绝: code=%d msg=%s (game_id=%s)",
                      ack.code, ack.msg.c_str(), game_id.c_str());
+                on_heartbeat_failure(game_id);
+            } else {
+                heartbeat_failures_ = 0;
             }
         }
         reply->deleteLater();
@@ -390,12 +393,18 @@ void DanmakuWebSocket::release_open_project()
     if (open_game_id_.empty() || session_creds_.access_key.empty()) {
         open_game_id_.clear();
         open_auth_body_.clear();
+        wss_links_.clear();
+        reset_link_failover();
+        heartbeat_failures_ = 0;
         return;
     }
 
     const std::string game_id = open_game_id_;
     open_game_id_.clear();
     open_auth_body_.clear();
+    wss_links_.clear();
+    reset_link_failover();
+    heartbeat_failures_ = 0;
 
     abort_reply(end_reply_);   // 上一次 end_app 尚未返回时不再重复发送
     end_reply_ = danmaku::OpenLiveClient::post_end(nam_, game_id, session_creds_);
@@ -423,13 +432,13 @@ void DanmakuWebSocket::release_open_project()
     });
 }
 
-// 指数退避：2s → 4s → 8s → 16s → 30s 封顶
-void DanmakuWebSocket::schedule_reconnect(int base_delay_ms)
+// 指数退避：base × 2^n，按 max_delay_ms 封顶（默认 2s → 4s → 8s → 16s → 30s）
+void DanmakuWebSocket::schedule_reconnect(int base_delay_ms, int max_delay_ms)
 {
     if (shutdown_requested_ || !session_active_) return;
 
     int delay = base_delay_ms * (1 << std::min(reconnect_attempts_, 4));
-    delay = std::min(delay, RECONNECT_MAX_DELAY_MS);
+    delay = std::min(delay, max_delay_ms);
     reconnect_attempts_++;
 
     blog(LOG_INFO, "[danmaku-open] scheduling reconnect in %d ms (attempt %d)",
@@ -448,7 +457,112 @@ void DanmakuWebSocket::attempt_reconnect()
     if (shutdown_requested_ || !session_active_) return;
     // 已有连接尝试在进行或已建立连接：本轮交由该连接的结果继续驱动
     if (attempt_in_flight_ || state_ == State::Connected) return;
+
+    // 官方场次仍有效：直接复用 auth_body 重连（必要时切换集群），不重新 start_app
+    if (open_ws_on_chosen_link()) return;
+
     start_connect_attempt();
+}
+
+// 统一的断开/连接失败入口（幂等）：区分“从未鉴权成功”（优先切换集群）
+// 与“已正常接收过消息”（原地重连）
+void DanmakuWebSocket::handle_connection_lost(const char *reason)
+{
+    stop_heartbeat();
+    popularity_ = 0;
+
+    const bool was_authenticated = authenticated_;
+    authenticated_ = false;
+
+    blog(LOG_INFO, "[danmaku-open] websocket closed (%s, session_active=%d, authenticated=%d)",
+         reason, session_active_ ? 1 : 0, was_authenticated ? 1 : 0);
+
+    // 主动关闭：状态已由 disconnect_from_room() 收尾
+    if (!session_active_ || shutdown_requested_) {
+        set_state(State::Closed);
+        return;
+    }
+    if (reconnect_timer_->isActive()) return;   // 已有重连计划
+
+    attempt_in_flight_ = false;
+
+    if (!was_authenticated) {
+        // 未建立过可用连接：先切换集群，再进入整体退避
+        mark_current_link_failed();
+        const size_t fail_limit = std::max<size_t>(2, wss_links_.size() * 2);
+        if (++ws_attempt_failures_ >= static_cast<int>(fail_limit)) {
+            blog(LOG_WARNING,
+                 "[danmaku-open] 连续 %d 次未通过鉴权，判定官方场次失效，结束场次后重新 start_app",
+                 ws_attempt_failures_);
+            release_open_project();
+        }
+    } else {
+        ws_attempt_failures_ = 0;
+    }
+
+    // 网络抖动或对端主动断开：自动重连（指数退避）
+    schedule_reconnect(RECONNECT_BASE_DELAY_MS);
+}
+
+// 项目心跳连续失败：官方 60s 无心跳会关闭场次，连续达到阈值即主动结束场次重新 start_app
+void DanmakuWebSocket::on_heartbeat_failure(const std::string &game_id)
+{
+    if (++heartbeat_failures_ < HEARTBEAT_FAILURE_LIMIT) return;
+
+    blog(LOG_WARNING,
+         "[danmaku-open] 项目心跳连续 %d 次失败，判定官方场次失效，结束场次后重新 start_app (game_id=%s)",
+         heartbeat_failures_, game_id.c_str());
+    release_open_project();
+    if (ws_->state() != QAbstractSocket::UnconnectedState) ws_->close();
+    schedule_reconnect(RECONNECT_BASE_DELAY_MS);
+}
+
+// 用当前场次的 auth_body 与选定集群链接建连；同时维持项目心跳
+bool DanmakuWebSocket::open_ws_on_chosen_link()
+{
+    if (wss_links_.empty() || open_auth_body_.empty()) return false;
+
+    const std::string &link = choose_wss_link();
+    blog(LOG_INFO, "[danmaku-open] connecting to official websocket %s (game_id=%s, link %zu/%zu)",
+         link.c_str(), open_game_id_.c_str(), wss_link_index_ + 1, wss_links_.size());
+
+    // 官方 HTTP 项目心跳（每 20 秒一次）保活场次，与长连是否断开无关
+    open_heartbeat_timer_->start(20000);
+
+    ws_->open(QUrl(QString::fromStdString(link)));
+    return true;
+}
+
+// 从当前索引开始选择第一个不在冷却期的集群链接；全部冷却时退回当前索引
+const std::string &DanmakuWebSocket::choose_wss_link()
+{
+    const size_t count = wss_links_.size();
+    const auto now = std::chrono::steady_clock::now();
+    for (size_t offset = 0; offset < count; ++offset) {
+        const size_t index = (wss_link_index_ + offset) % count;
+        auto cooldown = link_cooldowns_.find(wss_links_[index]);
+        if (cooldown == link_cooldowns_.end() || cooldown->second <= now) {
+            wss_link_index_ = index;
+            return wss_links_[index];
+        }
+    }
+    return wss_links_[wss_link_index_ % count];
+}
+
+void DanmakuWebSocket::mark_current_link_failed()
+{
+    if (wss_links_.empty()) return;
+
+    link_cooldowns_[wss_links_[wss_link_index_]] =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(LINK_COOLDOWN_MS);
+    wss_link_index_ = (wss_link_index_ + 1) % wss_links_.size();
+}
+
+void DanmakuWebSocket::reset_link_failover()
+{
+    wss_link_index_ = 0;
+    link_cooldowns_.clear();
+    ws_attempt_failures_ = 0;
 }
 
 // 取消在途回复：finished 回调会因代次守卫作废，此处只负责释放

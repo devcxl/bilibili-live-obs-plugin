@@ -1,8 +1,10 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <QAbstractSocket>
@@ -158,8 +160,15 @@ private:
     void set_state(State state);
     void start_connect_attempt();                              // 发起 start_app 连接尝试
     void on_start_reply(QNetworkReply *reply, uint64_t gen);   // start_app 异步回复
+    void handle_connection_lost(const char *reason);           // 统一的断开/连接失败入口（幂等）
+    void on_heartbeat_failure(const std::string &game_id);     // 项目心跳失败累计与场次失效判定
+    bool open_ws_on_chosen_link();                             // 用当前 auth_body + 选定集群链接建连
+    const std::string &choose_wss_link();                      // 轮换跳过冷却中的链接
+    void mark_current_link_failed();                           // 当前链接冷却并轮换到下一位
+    void reset_link_failover();                                // 复位链接索引/冷却/失败计数
     void release_open_project();                               // 异步结束官方场次（end_app）
-    void schedule_reconnect(int base_delay_ms = RECONNECT_BASE_DELAY_MS);
+    void schedule_reconnect(int base_delay_ms = RECONNECT_BASE_DELAY_MS,
+                            int max_delay_ms = RECONNECT_MAX_DELAY_MS);
     void stop_reconnect();
     void abort_reply(QNetworkReply *&reply);                   // abort + deleteLater 在途回复
     void wait_for_end_app(int timeout_ms);                     // 退出时给 end_app 有界宽限
@@ -180,6 +189,13 @@ private:
     std::string room_id_;
     std::string open_game_id_;
     std::string open_auth_body_;
+
+    // 官方场次的集群链接（wss_link）：多个地址互为不同集群的镜像，失败时轮换
+    std::vector<std::string> wss_links_;
+    size_t wss_link_index_ = 0;
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> link_cooldowns_;
+    int ws_attempt_failures_ = 0;   // 本场次内未达 Connected 的连续失败数
+    int heartbeat_failures_ = 0;    // 项目心跳连续失败数
 
     // 官方 HTTP 的凭据快照：attempt_ 为本次尝试，session_ 为成功建立场次后固定
     danmaku::OpenLiveCredentials attempt_creds_;
@@ -208,6 +224,8 @@ private:
     static constexpr int RECONNECT_MAX_DELAY_MS = 30000;
     static constexpr int HTTP_TRANSFER_TIMEOUT_MS = 10000;
     static constexpr int END_APP_SHUTDOWN_GRACE_MS = 1500;
+    static constexpr int LINK_COOLDOWN_MS = 60000;      // 单集群冷却，避免对故障集群热循环
+    static constexpr int HEARTBEAT_FAILURE_LIMIT = 2;   // 连续心跳失败达到该值判定场次失效
 };
 
 Q_DECLARE_METATYPE(DanmakuWebSocket::State)
