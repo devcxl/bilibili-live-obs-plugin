@@ -783,10 +783,8 @@ void BiliDock::restore_live_state()
 
     reset_upper_height();
 
-    if (danmaku_display_) {
-        // 连接编排统一走 start_danmaku()（含配置回退与无直播间提示），不随意清空可能已收到的弹幕
-        start_danmaku();
-    }
+    // 连接编排统一走 start_danmaku()（含配置回退与无直播间提示），不随意清空可能已收到的弹幕
+    start_danmaku();
 }
 
 // 发起弹幕连接：开播时 / 恢复开播 / 登录完成 / 已关闭状态下手动点击「连接」时调用。
