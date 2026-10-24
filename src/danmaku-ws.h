@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include <QAbstractSocket>
@@ -104,6 +103,12 @@ Q_DECLARE_METATYPE(GuardMessage)
 Q_DECLARE_METATYPE(LikeMessage)
 Q_DECLARE_METATYPE(EntryMessage)
 
+// 在途 end_app（可并发，数量有界）；game_id 用于超限时准确记录被放弃的场次
+struct PendingEndRequest {
+    QNetworkReply *reply = nullptr;
+    std::string game_id;
+};
+
 // ─── B站开放平台 (Open Live) 官方长连接客户端 ───
 // 生命周期约定：
 //   * 用户开启弹幕互动后，网络抖动/对端关闭会触发指数退避自动重连；
@@ -174,6 +179,8 @@ private:
     void mark_current_link_failed();                           // 当前链接冷却并轮换到下一位
     void reset_link_failover();                                // 复位链接索引/冷却/失败计数
     void release_open_project();                               // 异步结束官方场次（end_app）
+    void reset_session_state();                                // 清空当前场次的连接与凭据
+    void arm_end_cooldown();                                   // 进入 end_app 失败冷却期
     void post_end_app(const std::string &game_id,
                       const danmaku::OpenLiveCredentials &creds); // 追加一次 best-effort end_app
     void abort_all_end_replies();                              // 取消全部在途 end_app（仅退出时）
@@ -198,8 +205,7 @@ private:
 
     QNetworkReply *start_reply_ = nullptr;       // 在途 start_app
     QNetworkReply *heartbeat_reply_ = nullptr;   // 在途项目心跳
-    // 在途 end_app（可并发，数量有界）；game_id 用于超限时准确记录被放弃的场次
-    std::vector<std::pair<QNetworkReply *, std::string>> end_replies_;
+    std::vector<PendingEndRequest> end_replies_; // 在途 end_app（可并发，数量有界）
 
     std::string room_id_;
     std::string open_game_id_;
@@ -223,9 +229,6 @@ private:
     uint32_t seq_ = 1;
     int popularity_ = 0;
     State state_ = State::Closed;
-
-    // 是否已通过鉴权，可以收发心跳与业务消息（由 state_ == Connected 派生）
-    bool authenticated_ = false;
 
     // 用户意图：true = 保持弹幕互动开启（断开后自动重连）；false = 已手动关闭
     bool session_active_ = false;

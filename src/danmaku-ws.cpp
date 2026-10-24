@@ -258,7 +258,6 @@ void DanmakuWebSocket::on_start_reply(QNetworkReply *reply, uint64_t gen,
 void DanmakuWebSocket::disconnect_from_room()
 {
     session_active_ = false;      // 用户主动关闭：不再自动重连
-    authenticated_ = false;       // 避免下一次未鉴权尝试被旧的已鉴权状态短路
     attempt_in_flight_ = false;
     ++connect_gen_;
 
@@ -322,7 +321,7 @@ void DanmakuWebSocket::on_ws_ssl_errors(const QList<QSslError> &errors)
 void DanmakuWebSocket::on_auth_timeout()
 {
     if (shutdown_requested_ || !session_active_) return;
-    if (authenticated_) return;   // 已鉴权成功，计时器已停止；防御迟到的事件
+    if (is_connected()) return;   // 已鉴权成功，计时器已停止；防御迟到的事件
 
     blog(LOG_WARNING, "[danmaku-open] wss handshake/auth timeout (%d ms)",
          AUTH_DEADLINE_MS);
@@ -371,14 +370,13 @@ void DanmakuWebSocket::on_ws_binary_message(const QByteArray &data)
             auto j = json::parse(pkt.body.toStdString(), nullptr, false);
             if (!j.is_discarded() && j.value("code", -1) == 0) {
                 auth_timer_->stop();
-                authenticated_ = true;
                 auth_rejections_ = 0;
+                set_state(State::Connected);
                 blog(LOG_INFO, "[danmaku-open] auth success! listening for official live events");
                 start_heartbeat();
                 reconnect_attempts_ = 0;   // 连接稳定，重置退避
                 reset_link_failover();
                 heartbeat_failures_ = 0;
-                set_state(State::Connected);
             } else {
                 handle_auth_rejection(pkt.body);
             }
@@ -443,7 +441,7 @@ void DanmakuWebSocket::stop_heartbeat()
 
 void DanmakuWebSocket::send_heartbeat()
 {
-    if (!authenticated_) return;
+    if (!is_connected()) return;
 
     QByteArray packet = danmaku::DanmakuCodec::encode_packet(
         danmaku::OpCode::Heartbeat,
@@ -517,32 +515,35 @@ void DanmakuWebSocket::send_open_http_heartbeat()
 // 旧的 end_app 在途时不会被新 end 取消；超限时放弃最旧并冷却（不保证送达）。
 void DanmakuWebSocket::release_open_project()
 {
-    authenticated_ = false;
     stop_heartbeat();
     open_heartbeat_timer_->stop();
     abort_reply(heartbeat_reply_);
 
-    if (open_game_id_.empty() || session_creds_.access_key.empty()) {
-        open_game_id_.clear();
-        open_auth_body_.clear();
-        wss_links_.clear();
-        reset_link_failover();
-        heartbeat_failures_ = 0;
-        session_creds_ = {};
-        return;
-    }
-
     const std::string game_id = open_game_id_;
     const danmaku::OpenLiveCredentials creds = session_creds_;
+    reset_session_state();
+
+    if (game_id.empty() || creds.access_key.empty()) return;   // 从未建立场次
+    if (shutdown_requested_) return;   // 退出路径不发起新请求（结果本不可知）
+    post_end_app(game_id, creds);
+}
+
+// 清空当前场次的连接信息与凭据快照（不触碰在途请求）
+void DanmakuWebSocket::reset_session_state()
+{
     open_game_id_.clear();
     open_auth_body_.clear();
     wss_links_.clear();
     reset_link_failover();
     heartbeat_failures_ = 0;
     session_creds_ = {};
+}
 
-    if (shutdown_requested_) return;   // 退出路径不发起新请求（结果本不可知）
-    post_end_app(game_id, creds);
+// 进入 end_app 冷却：在此期间不重新 start_app
+void DanmakuWebSocket::arm_end_cooldown()
+{
+    end_cooldown_until_ =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(COOLDOWN_BACKOFF_MS);
 }
 
 // 追加一次 best-effort end_app。用于当前场次收尾，以及“迟到的 start 成功”补发。
@@ -557,18 +558,16 @@ void DanmakuWebSocket::post_end_app(const std::string &game_id,
     }
     if (end_replies_.size() >= static_cast<size_t>(MAX_PENDING_END_APP)) {
         // 有界：放弃最旧的一次（服务端可能仍保留该场次，必须冷却且如实记录）
-        const auto oldest = end_replies_.front();
+        const PendingEndRequest oldest = end_replies_.front();
         end_replies_.erase(end_replies_.begin());
-        const std::string dropped_game = oldest.second;
-        oldest.first->disconnect(this);
-        oldest.first->abort();
-        oldest.first->deleteLater();
-        end_cooldown_until_ =
-            std::chrono::steady_clock::now() + std::chrono::milliseconds(COOLDOWN_BACKOFF_MS);
+        oldest.reply->disconnect(this);
+        oldest.reply->abort();
+        oldest.reply->deleteLater();
+        arm_end_cooldown();
         blog(LOG_WARNING,
              "[danmaku-open] 在途 end_app 已达上限 %d，放弃最旧请求 (game_id=%s)；"
              "该场次服务端状态未知，进入 %d ms 冷却",
-             MAX_PENDING_END_APP, dropped_game.c_str(), COOLDOWN_BACKOFF_MS);
+             MAX_PENDING_END_APP, oldest.game_id.c_str(), COOLDOWN_BACKOFF_MS);
     }
 
     QNetworkReply *reply = danmaku::OpenLiveClient::post_end(*network_manager(), game_id, creds);
@@ -576,13 +575,15 @@ void DanmakuWebSocket::post_end_app(const std::string &game_id,
         blog(LOG_WARNING, "[danmaku-open] end_app 请求创建失败 (game_id=%s)", game_id.c_str());
         return;
     }
-    end_replies_.emplace_back(reply, game_id);
+    end_replies_.push_back({reply, game_id});
     blog(LOG_INFO, "[danmaku-open] end_app 已发送 (game_id=%s)", game_id.c_str());
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, game_id]() {
         end_replies_.erase(
             std::remove_if(end_replies_.begin(), end_replies_.end(),
-                           [reply](const auto &entry) { return entry.first == reply; }),
+                           [reply](const PendingEndRequest &entry) {
+                               return entry.reply == reply;
+                           }),
             end_replies_.end());
         if (shutdown_requested_) {   // abort 回调：不再触碰任何状态
             reply->deleteLater();
@@ -594,19 +595,13 @@ void DanmakuWebSocket::post_end_app(const std::string &game_id,
                  reply->errorString().toUtf8().constData(), game_id.c_str());
             // 服务端可能仍保留旧场次：冷却后才有意义地重新 start_app。
             // 当前已有新场次时不设冷却：官方已允许新场次，旧 end 失败不构成阻塞。
-            if (open_game_id_.empty()) {
-                end_cooldown_until_ = std::chrono::steady_clock::now() +
-                                      std::chrono::milliseconds(COOLDOWN_BACKOFF_MS);
-            }
+            if (open_game_id_.empty()) arm_end_cooldown();
         } else {
             auto ack = danmaku::OpenLiveClient::parse_ack(reply->readAll());
             if (!ack.ok) {
                 blog(LOG_WARNING, "[danmaku-open] end_app 被官方拒绝: code=%d msg=%s (game_id=%s)",
                      ack.code, ack.msg.c_str(), game_id.c_str());
-                if (open_game_id_.empty()) {
-                    end_cooldown_until_ = std::chrono::steady_clock::now() +
-                                          std::chrono::milliseconds(COOLDOWN_BACKOFF_MS);
-                }
+                if (open_game_id_.empty()) arm_end_cooldown();
             }
             // 成功不清除冷却：同批 end 中可能有被放弃/失败的场次，服务端状态未知
         }
@@ -621,7 +616,7 @@ void DanmakuWebSocket::abort_all_end_replies()
     const auto pending = end_replies_;
     end_replies_.clear();
     for (const auto &entry : pending) {
-        QNetworkReply *reply = entry.first;
+        QNetworkReply *reply = entry.reply;
         reply->disconnect(this);   // abort 会同步发 finished；退出时无需再进业务回调
         reply->abort();
         reply->deleteLater();
@@ -675,8 +670,7 @@ void DanmakuWebSocket::handle_connection_lost(const char *reason)
     auth_timer_->stop();
     popularity_ = 0;
 
-    const bool was_authenticated = authenticated_;
-    authenticated_ = false;
+    const bool was_authenticated = is_connected();
 
     blog(LOG_INFO, "[danmaku-open] websocket closed (%s, session_active=%d, authenticated=%d)",
          reason, session_active_ ? 1 : 0, was_authenticated ? 1 : 0);
@@ -714,7 +708,6 @@ void DanmakuWebSocket::handle_auth_rejection(const QByteArray &body)
 {
     stop_heartbeat();
     auth_timer_->stop();
-    authenticated_ = false;
     ++auth_rejections_;
 
     blog(LOG_WARNING, "[danmaku-open] auth failed: %s (连续显式拒绝 %d 次)",
@@ -768,7 +761,6 @@ bool DanmakuWebSocket::open_ws_on_chosen_link()
          link.c_str(), open_game_id_.c_str(), wss_link_index_ + 1, wss_links_.size());
 
     // 每次 WSS 尝试都从干净的单连接状态开始；seq 按连接从 1 计。
-    authenticated_ = false;
     stop_heartbeat();
     seq_ = 1;
 
@@ -824,12 +816,5 @@ void DanmakuWebSocket::abort_reply(QNetworkReply *&reply)
 // 在 UI 线程构造不可变凭据快照，异步回调不再触碰 ConfigManager
 danmaku::OpenLiveCredentials DanmakuWebSocket::snapshot_credentials() const
 {
-    danmaku::OpenLiveCredentials creds;
-    if (!cfg_) return creds;
-
-    creds.app_id = cfg_->danmaku.open_live_app_id;
-    creds.access_key = cfg_->danmaku.open_live_access_key;
-    creds.access_secret = cfg_->danmaku.open_live_secret;
-    creds.code = cfg_->danmaku.open_live_code;
-    return creds;
+    return cfg_ ? cfg_->open_live_credentials() : danmaku::OpenLiveCredentials{};
 }
