@@ -783,14 +783,8 @@ void BiliDock::restore_live_state()
 
     reset_upper_height();
 
-    if (danmaku_ws_ && danmaku_display_) {
-        std::string room_id = live_->get_room_id();
-        if (!room_id.empty()) {
-            danmaku_ws_->connect_to_room(room_id);
-            danmaku_display_->clear_all();
-            danmaku_display_->show();
-        }
-    }
+    // 连接编排统一走 start_danmaku()（含配置回退与无直播间提示），不随意清空可能已收到的弹幕
+    start_danmaku();
 }
 
 // 发起弹幕连接：开播时 / 恢复开播 / 登录完成 / 已关闭状态下手动点击「连接」时调用。

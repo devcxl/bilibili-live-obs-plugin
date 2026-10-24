@@ -130,6 +130,16 @@ std::string ConfigManager::key_path()
     return config_dir() + "/.cookie_key";
 }
 
+danmaku::OpenLiveCredentials ConfigManager::open_live_credentials() const
+{
+    danmaku::OpenLiveCredentials creds;
+    creds.app_id = danmaku.open_live_app_id;
+    creds.access_key = danmaku.open_live_access_key;
+    creds.access_secret = danmaku.open_live_secret;
+    creds.code = danmaku.open_live_code;
+    return creds;
+}
+
 ConfigManager::ConfigManager()
 {
     key_ = load_or_create_key();

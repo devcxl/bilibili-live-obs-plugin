@@ -4,6 +4,8 @@
 #include <unordered_map>
 #include <nlohmann/json.hpp>
 
+#include "danmaku/open-live-client.h"
+
 using json = nlohmann::json;
 
 struct UserData {
@@ -68,6 +70,9 @@ public:
     std::string current_uid;
     TtsConfigData tts;
     DanmakuConfigData danmaku;
+
+    // 开放平台凭据快照：供异步请求按值捕获，避免回调读取可变的配置
+    [[nodiscard]] danmaku::OpenLiveCredentials open_live_credentials() const;
 
     static std::string config_dir();
     static std::string config_path();
