@@ -185,6 +185,7 @@ void DanmakuWebSocket::on_start_reply(QNetworkReply *reply, uint64_t gen,
                                       const danmaku::OpenLiveCredentials &creds)
 {
     if (start_reply_ == reply) start_reply_ = nullptr;
+    if (gen == connect_gen_.load()) attempt_in_flight_ = false;
 
     const bool net_ok = (reply->error() == QNetworkReply::NoError);
     const QByteArray body = reply->readAll();
@@ -212,8 +213,6 @@ void DanmakuWebSocket::on_start_reply(QNetworkReply *reply, uint64_t gen,
         }
         return;
     }
-
-    attempt_in_flight_ = false;
 
     if (!net_ok) {
         schedule_reconnect(RECONNECT_BASE_DELAY_MS);
@@ -375,7 +374,7 @@ void DanmakuWebSocket::on_ws_binary_message(const QByteArray &data)
                 blog(LOG_INFO, "[danmaku-open] auth success! listening for official live events");
                 start_heartbeat();
                 reconnect_attempts_ = 0;   // 连接稳定，重置退避
-                reset_link_failover();
+                ws_attempt_failures_ = 0;
                 heartbeat_failures_ = 0;
             } else {
                 handle_auth_rejection(pkt.body);
@@ -560,9 +559,8 @@ void DanmakuWebSocket::post_end_app(const std::string &game_id,
         // 有界：放弃最旧的一次（服务端可能仍保留该场次，必须冷却且如实记录）
         const PendingEndRequest oldest = end_replies_.front();
         end_replies_.erase(end_replies_.begin());
-        oldest.reply->disconnect(this);
-        oldest.reply->abort();
-        oldest.reply->deleteLater();
+        QNetworkReply *oldest_reply = oldest.reply;
+        abort_reply(oldest_reply);
         arm_end_cooldown();
         blog(LOG_WARNING,
              "[danmaku-open] 在途 end_app 已达上限 %d，放弃最旧请求 (game_id=%s)；"
@@ -617,9 +615,7 @@ void DanmakuWebSocket::abort_all_end_replies()
     end_replies_.clear();
     for (const auto &entry : pending) {
         QNetworkReply *reply = entry.reply;
-        reply->disconnect(this);   // abort 会同步发 finished；退出时无需再进业务回调
-        reply->abort();
-        reply->deleteLater();
+        abort_reply(reply);
     }
 }
 
