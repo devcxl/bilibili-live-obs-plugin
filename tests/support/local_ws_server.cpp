@@ -67,6 +67,13 @@ void LocalWsServer::on_binary_message(const QByteArray &data)
     if (!socket) return;
 
     if (mode_ == AuthMode::Hang) {
+        // 记录鉴权包但不回 AuthReply：模拟对端接受连接后握手挂起
+        auto packets = danmaku::DanmakuCodec::decode_packets(data);
+        for (const auto &pkt : packets) {
+            if (pkt.op == static_cast<uint32_t>(danmaku::OpCode::Auth)) {
+                received_auth_bodies_.push_back(pkt.body);
+            }
+        }
         return;
     }
 
