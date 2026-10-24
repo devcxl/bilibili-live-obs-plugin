@@ -19,17 +19,21 @@ issue #19（AI 代码审查）遗留问题的核实结论（证据见 `docs/dev/
 
 - `OpenLiveClient` 收敛为纯协议层：签名头（HMAC-SHA256）、请求体构造、响应解析；`post_start` / `post_heartbeat` / `post_end` 接收调用方注入的 `QNetworkAccessManager&`，返回在途 `QNetworkReply*`。
 - `DanmakuWebSocket` 持有自己的 QNAM（UI 线程创建与使用，`setTransferTimeout(10s)`）；删除 `std::thread`、detached 线程与全部 `join()`。
-- 关闭语义：`disconnect_from_room()` 对在途 start/心跳 `abort()`；`end_app` 允许完成；析构时若 `end_app` 在途，最多等待 1.5s（官方明确要求正常 end，否则下场次受 1 分钟冷却影响）。除此之外退出为 O(1)，不再受 `CURLOPT_TIMEOUT` 影响。
+- 关闭语义：`disconnect_from_room()` 中在途 start 允许异步自然返回，若成功则凭原始凭据快照补发 best-effort `end_app`，心跳立即取消；`end_app` 允许在后台完成；析构时不开启嵌套事件循环等待网络，立即取消在途请求并安全释放，退出延迟确定为 O(1)。旧场次 `end_app` 在途或失败时通过有界冷却重试防止并发场次冲撞。
+- 绝对时限保护：除 QNAM 空闲传输超时外，对所有请求施加绝对超时兜底，防止挂起连接永久阻塞重试状态。
 
 ### 决策 2：凭据快照替代跨线程读配置
 
 `OpenLiveCredentials{app_id, access_key, access_secret, code}` 在 UI 线程构造、按值传递（C++ Core Guidelines CP.31/CP.24）；`start_app` 成功后固定为「本场次快照」，供项目心跳与 `end_app` 复用，异步回调不再回读 `cfg_`。
 
-### 决策 3：会话复用 + `wss_link` 多集群兜底
+### 决策 3：会话复用 + `wss_link` 多集群兜底 + 鉴权超时
 
 - `start_app` 成功后保存全部 `wss_link` 与 `auth_body`（官方场次会话）；WSS 断线重连**复用会话、不重新 `start_app`**（修复决策背景第 4 条的会话泄漏）。
-- 未达 `Connected` 的失败：对当前链接打 60s 冷却并轮换下一集群；单会话内在链接间反复失败（阈值 `max(2, links×2)`）或项目心跳连续被官方拒绝（2 次）时，判定会话失效：`end_app` 结束场次后重新 `start_app`。
+- 每次 WSS 连接尝试独立施加 10s 握手与鉴权超时保护，超时按网络故障处理。
+- 未达 `Connected` 的网络/握手故障：对当前链接打 60s 冷却并轮换下一集群；单会话内在链接间反复失败（阈值 `max(2, links×2)`）或项目心跳连续被官方拒绝（2 次）时，判定会话失效：`end_app` 结束场次后重新 `start_app`。
+- 显式鉴权拒绝（`AuthReply` 业务码非 0）：判定为凭据或会话失效而非单节点故障，不轮换集群；结束当前场次后延迟 5s 重试一次新场次，连续拒绝则彻底停止。
 - 进入 `Connected` 后复位链接索引与冷却（回到官方默认的第一个链接）。
+- 项目心跳使用场次级独立 20s 周期定时器，WSS 重连不重启该节拍；心跳请求携带 `game_id` 快照，避免旧场次迟到回复污染新场次。
 - 新增 INFO 日志记录 `wss_link` 实际数量，用于回填调研文档中的未验证项。
 
 ### 决策 4：疑似冷却退避对齐官方 1 分钟
@@ -38,7 +42,7 @@ issue #19（AI 代码审查）遗留问题的核实结论（证据见 `docs/dev/
 
 ### 决策 5：`restore_live_state()` 复用 `start_danmaku()`
 
-OBS 重启/插件重载的恢复路径不再自行 `connect_to_room`，统一委托 `start_danmaku()`（保留面板清空与推流状态文案），消除重复的连接编排逻辑。
+OBS 重启/插件重载的恢复路径不再自行 `connect_to_room`，统一委托 `start_danmaku()`（保留推流状态文案，且不随意清除面板可能已收到的弹幕），消除重复的连接编排逻辑。
 
 ## 替代方案与排除理由
 
@@ -47,7 +51,7 @@ OBS 重启/插件重载的恢复路径不再自行 `connect_to_room`，统一委
 | 保留 std::thread + libcurl，加停止标志 | `curl_easy_perform` 无法从外部中断，退出仍须等待或 detach；无法给出 O(1) 退出保证 |
 | QtConcurrent + QFutureWatcher | 官方文档明确 `QtConcurrent::run()` 返回的 future 不可取消，仍需 `waitForFinished()`，退化回阻塞 |
 | curl_multi 长驻工作线程 | 需自建事件循环、超时、取消与线程回收，复杂度远超收益 |
-| 退出时也立即 abort `end_app` | 官方明确未正常 end 会影响道具投放与下一场次（1 分钟冷却） |
+| 析构中嵌套 QEventLoop 等待 end_app | 析构期间重入 Qt 事件循环存在对象部分析构重入风险，且无法保证进程退出时网络包一定送达；改为主动态异步 end + 退出 O(1) 放弃 |
 
 ## 后果与影响
 

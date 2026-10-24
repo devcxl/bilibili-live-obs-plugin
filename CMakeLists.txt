@@ -135,6 +135,12 @@ install(DIRECTORY data/
   OPTIONAL
 )
 
+# ---- tests ----
+include(CTest)
+if(BUILD_TESTING)
+  add_subdirectory(tests)
+endif()
+
 # ---- CPack / DEB ----
 set(CPACK_PACKAGE_NAME "${PLUGIN_NAME}")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")

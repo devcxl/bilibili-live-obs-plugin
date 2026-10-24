@@ -784,8 +784,7 @@ void BiliDock::restore_live_state()
     reset_upper_height();
 
     if (danmaku_display_) {
-        // 连接编排统一走 start_danmaku()（含配置回退与无直播间提示），恢复路径只负责清空面板
-        danmaku_display_->clear_all();
+        // 连接编排统一走 start_danmaku()（含配置回退与无直播间提示），不随意清空可能已收到的弹幕
         start_danmaku();
     }
 }
