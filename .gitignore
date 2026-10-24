@@ -25,3 +25,6 @@ uv.lock
 build/
 build-*/
 
+# --- Worktrees ---
+.worktrees/
+
