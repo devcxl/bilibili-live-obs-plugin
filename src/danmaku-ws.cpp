@@ -802,13 +802,15 @@ void DanmakuWebSocket::reset_link_failover()
     ws_attempt_failures_ = 0;
 }
 
-// 取消在途回复：先摘指针再 abort。abort() 可能同步触发 finished，
-// 回调通过指针/代次守卫把自己的请求当作迟到结果处理；deleteLater 可重复调用。
+// 取消在途回复：先摘指针，再断开本对象回调，最后 abort。
+// abort() 可能同步触发 finished；先 disconnect(this) 保证取消期间不会重入
+// 业务回调（旧实现依赖回调里的 shutdown/代次守卫兜底）。deleteLater 可重复调用。
 void DanmakuWebSocket::abort_reply(QNetworkReply *&reply)
 {
     if (!reply) return;
     QNetworkReply *pending = reply;
     reply = nullptr;
+    pending->disconnect(this);
     pending->abort();
     pending->deleteLater();
 }

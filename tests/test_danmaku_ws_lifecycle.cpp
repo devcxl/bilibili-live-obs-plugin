@@ -21,6 +21,8 @@ private slots:
     void testDisconnectWhileStartPendingSendsEndAppOnStaleSuccess();
     void testSessionSnapshotProtectsEndAppFromConfigMutation();
     void testDestructorReturnsImmediatelyWithoutBlocking();
+    void testDestructorAbortsPendingStartWithoutCallbacks();
+    void testDestructorAbortsPendingEndWithoutCallbacks();
 
 private:
     std::unique_ptr<QTemporaryDir> temp_dir_;
@@ -259,20 +261,126 @@ void TestDanmakuWsLifecycle::testDestructorReturnsImmediatelyWithoutBlocking()
     FakeNetworkAccessManager fake_nam;
     // Don't finish start_app reply (simulate hanging network)
 
+    auto ws = std::make_unique<DanmakuWebSocket>();
+    ws->set_config(cfg_.get());
+    ws->set_network_access_manager(&fake_nam);
+    ws->connect_to_room("12345");
+    QVERIFY(!fake_nam.requests().empty());
+
     QElapsedTimer timer;
     timer.start();
-
-    {
-        DanmakuWebSocket ws;
-        ws.set_config(cfg_.get());
-        ws.set_network_access_manager(&fake_nam);
-        ws.connect_to_room("12345");
-        // ws destructs here while start_app is still pending
-    }
+    ws.reset();   // destructs while start_app is still pending
 
     qint64 elapsed = timer.elapsed();
-    // Destructor must NOT block 1500ms or 10000ms
-    QVERIFY2(elapsed < 200, qPrintable(QString("Destructor took %1 ms, expected < 200 ms").arg(elapsed)));
+    // 退出路径不得阻塞：不等待 1500ms/10000ms 的网络时限，也不 join 线程。
+    QVERIFY2(elapsed < 50, qPrintable(QString("Destructor took %1 ms, expected < 50 ms").arg(elapsed)));
+}
+
+// 退出时在途 start_app 必须被取消，且在 abort() 同步发 finished 之前已解绑回调，
+// 保证收尾阶段不会重入正在析构对象上的业务逻辑。
+void TestDanmakuWsLifecycle::testDestructorAbortsPendingStartWithoutCallbacks()
+{
+    cfg_->danmaku.open_live_app_id = 4004;
+    cfg_->danmaku.open_live_access_key = "ak_start";
+    cfg_->danmaku.open_live_secret = "sk_start";
+    cfg_->danmaku.open_live_code = "code_start";
+
+    FakeNetworkAccessManager fake_nam;
+    FakeNetworkReply *start_reply = nullptr;
+    fake_nam.set_handler([&start_reply](RecordedRequest &req) {
+        if (req.request.url().path() == "/v2/app/start") {
+            start_reply = req.reply;   // 保持挂起：模拟网络未返回
+        }
+    });
+
+    auto ws = std::make_unique<DanmakuWebSocket>();
+    ws->set_config(cfg_.get());
+    ws->set_network_access_manager(&fake_nam);
+    ws->connect_to_room("12345");
+    QVERIFY(start_reply != nullptr);
+
+    // 取消瞬间检查：start_app 的 finished 回调应已被 abort_reply 解绑。
+    bool abort_hook_called = false;
+    bool socket_connected_at_abort = true;
+    start_reply->set_abort_hook([&, reply = start_reply, raw_ws = ws.get()]() {
+        abort_hook_called = true;
+        socket_connected_at_abort =
+            QObject::disconnect(reply, &QNetworkReply::finished, raw_ws, nullptr);
+    });
+
+    QElapsedTimer timer;
+    timer.start();
+    ws.reset();
+
+    QVERIFY2(timer.elapsed() < 50,
+             qPrintable(QString("Shutdown took %1 ms, expected < 50 ms").arg(timer.elapsed())));
+    QVERIFY(abort_hook_called);
+    QVERIFY(start_reply->aborted());
+    QVERIFY(start_reply->isFinished());
+    QVERIFY2(!socket_connected_at_abort,
+             "start_app finished callback was still bound when abort() fired");
+}
+
+// 退出时在途 end_app 同样必须解绑后取消；abort_all_end_replies 不得为已关闭对象
+// 留下回调触发机会，也不得再发起新的网络请求。
+void TestDanmakuWsLifecycle::testDestructorAbortsPendingEndWithoutCallbacks()
+{
+    cfg_->danmaku.open_live_app_id = 5005;
+    cfg_->danmaku.open_live_access_key = "ak_end";
+    cfg_->danmaku.open_live_secret = "sk_end";
+    cfg_->danmaku.open_live_code = "code_end";
+
+    FakeNetworkAccessManager fake_nam;
+    FakeNetworkReply *end_reply = nullptr;
+    fake_nam.set_handler([&end_reply](RecordedRequest &req) {
+        if (req.request.url().path() == "/v2/app/start") {
+            QByteArray resp = R"({
+                "code": 0,
+                "data": {
+                    "game_info": {"game_id": "game_pending_end"},
+                    "anchor_info": {"room_id": 12345, "uname": "Anchor"},
+                    "websocket_info": {"auth_body": "{}", "wss_link": []}
+                }
+            })";
+            QPointer<FakeNetworkReply> p = req.reply;
+            QTimer::singleShot(0, [p, resp]() {
+                if (p && !p->isFinished()) p->finish(resp);
+            });
+        } else if (req.request.url().path() == "/v2/app/end") {
+            end_reply = req.reply;   // 保持挂起：模拟 end_app 未返回
+        }
+    });
+
+    auto ws = std::make_unique<DanmakuWebSocket>();
+    ws->set_config(cfg_.get());
+    ws->set_network_access_manager(&fake_nam);
+    ws->connect_to_room("12345");
+
+    // 空 wss_link → 立即释放场次并发起 end_app
+    QTRY_VERIFY_WITH_TIMEOUT(end_reply != nullptr, 1000);
+    const size_t requests_before_shutdown = fake_nam.requests().size();
+
+    bool abort_hook_called = false;
+    bool socket_connected_at_abort = true;
+    end_reply->set_abort_hook([&, reply = end_reply, raw_ws = ws.get()]() {
+        abort_hook_called = true;
+        socket_connected_at_abort =
+            QObject::disconnect(reply, &QNetworkReply::finished, raw_ws, nullptr);
+    });
+
+    QElapsedTimer timer;
+    timer.start();
+    ws.reset();
+
+    QVERIFY2(timer.elapsed() < 50,
+             qPrintable(QString("Shutdown took %1 ms, expected < 50 ms").arg(timer.elapsed())));
+    QVERIFY(abort_hook_called);
+    QVERIFY(end_reply->aborted());
+    QVERIFY(end_reply->isFinished());
+    QVERIFY2(!socket_connected_at_abort,
+             "end_app finished callback was still bound when abort() fired");
+    // 退出路径不发起新请求（不再补发 end_app / start_app）
+    QCOMPARE(fake_nam.requests().size(), requests_before_shutdown);
 }
 
 QTEST_MAIN(TestDanmakuWsLifecycle)
