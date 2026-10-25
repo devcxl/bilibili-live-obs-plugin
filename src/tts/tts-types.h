@@ -66,6 +66,7 @@ struct TtsConfig {
     // 通道 A：本机物理设备
     bool device_enabled = true;
     QString audio_device_id;
+    int device_volume = 80; // 0 ~ 100，主播耳机/设备独立音量
     TtsRoutingRules to_device;
 
     // 通道 B：OBS 混音推流源

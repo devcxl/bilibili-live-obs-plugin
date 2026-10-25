@@ -323,6 +323,7 @@ void ConfigManager::load()
 
         tts.device_enabled = tj.value("device_enabled", true);
         tts.audio_device_id = tj.value("audio_device_id", "");
+        tts.device_volume = tj.value("device_volume", tts.volume);
         tts.obs_enabled = tj.value("obs_enabled", true);
 
         if (tj.contains("to_device")) {
@@ -402,6 +403,7 @@ void ConfigManager::save()
 
     tj["device_enabled"] = tts.device_enabled;
     tj["audio_device_id"] = tts.audio_device_id;
+    tj["device_volume"] = tts.device_volume;
     json to_dev_j;
     to_dev_j["danmaku"] = tts.to_device.danmaku;
     to_dev_j["gift"] = tts.to_device.gift;

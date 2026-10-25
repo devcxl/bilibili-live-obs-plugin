@@ -42,6 +42,8 @@ private:
     // 输出通道
     QCheckBox *chk_device_ = nullptr;
     QComboBox *combo_device_ = nullptr;
+    QSlider *dev_vol_slider_ = nullptr;
+    QLabel *dev_vol_val_label_ = nullptr;
     QCheckBox *chk_obs_ = nullptr;
     QLabel *obs_status_label_ = nullptr;
 

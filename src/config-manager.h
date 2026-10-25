@@ -54,6 +54,7 @@ struct TtsConfigData {
     // 通道 A：本机物理设备
     bool device_enabled = true;
     std::string audio_device_id;
+    int device_volume = 80;
     TtsRoutingRulesData to_device;
 
     // 通道 B：OBS 混音推流源

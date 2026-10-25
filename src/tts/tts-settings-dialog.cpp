@@ -108,10 +108,25 @@ void TtsSettingsDialog::setup_ui()
     dev_row->addWidget(chk_device_);
     dev_row->addSpacing(12);
     combo_device_ = new QComboBox();
-    combo_device_->setMinimumWidth(220);
+    combo_device_->setMinimumWidth(200);
     dev_row->addWidget(new QLabel("设备:"));
     dev_row->addWidget(combo_device_, 1);
     chan_layout->addLayout(dev_row);
+
+    auto *dev_vol_row = new QHBoxLayout();
+    dev_vol_row->addSpacing(24);
+    dev_vol_row->addWidget(new QLabel("耳机/设备音量:"));
+    dev_vol_slider_ = new QSlider(Qt::Horizontal);
+    dev_vol_slider_->setRange(0, 100);
+    dev_vol_slider_->setSingleStep(5);
+    dev_vol_val_label_ = new QLabel("80%");
+    dev_vol_val_label_->setFixedWidth(45);
+    connect(dev_vol_slider_, &QSlider::valueChanged, [this](int val) {
+        dev_vol_val_label_->setText(QString("%1%").arg(val));
+    });
+    dev_vol_row->addWidget(dev_vol_slider_);
+    dev_vol_row->addWidget(dev_vol_val_label_);
+    chan_layout->addLayout(dev_vol_row);
 
     // 通道 B：OBS 混音推流源
     auto *obs_row = new QHBoxLayout();
@@ -202,6 +217,7 @@ void TtsSettingsDialog::setup_ui()
     // 联动逻辑
     connect(chk_device_, &QCheckBox::toggled, [this](bool on) {
         combo_device_->setEnabled(on);
+        dev_vol_slider_->setEnabled(on);
         chk_dev_danmaku_->setEnabled(on);
         chk_dev_gift_->setEnabled(on);
         chk_dev_sc_->setEnabled(on);
@@ -286,6 +302,10 @@ void TtsSettingsDialog::load_values()
     if (dev_idx >= 0) combo_device_->setCurrentIndex(dev_idx);
     combo_device_->setEnabled(cfg_->tts.device_enabled);
 
+    dev_vol_slider_->setValue(cfg_->tts.device_volume);
+    dev_vol_val_label_->setText(QString("%1%").arg(cfg_->tts.device_volume));
+    dev_vol_slider_->setEnabled(cfg_->tts.device_enabled);
+
     chk_obs_->setChecked(cfg_->tts.obs_enabled);
 
     // 路由矩阵 - 本机
@@ -340,6 +360,7 @@ void TtsSettingsDialog::on_save()
 
     cfg_->tts.device_enabled = chk_device_->isChecked();
     cfg_->tts.audio_device_id = combo_device_->currentData().toString().toStdString();
+    cfg_->tts.device_volume = dev_vol_slider_->value();
     cfg_->tts.to_device.danmaku = chk_dev_danmaku_->isChecked();
     cfg_->tts.to_device.gift = chk_dev_gift_->isChecked();
     cfg_->tts.to_device.sc = chk_dev_sc_->isChecked();
@@ -371,6 +392,7 @@ void TtsSettingsDialog::on_save()
 
         c.device_enabled = cfg_->tts.device_enabled;
         c.audio_device_id = QString::fromStdString(cfg_->tts.audio_device_id);
+        c.device_volume = cfg_->tts.device_volume;
         c.to_device.danmaku = cfg_->tts.to_device.danmaku;
         c.to_device.gift = cfg_->tts.to_device.gift;
         c.to_device.sc = cfg_->tts.to_device.sc;
@@ -408,6 +430,7 @@ void TtsSettingsDialog::on_test_speak()
     temp_cfg.volume = vol_slider_->value();
     temp_cfg.device_enabled = chk_device_->isChecked();
     temp_cfg.audio_device_id = combo_device_->currentData().toString();
+    temp_cfg.device_volume = dev_vol_slider_->value();
     temp_cfg.obs_enabled = chk_obs_->isChecked();
 
     tts_mgr_->update_config(temp_cfg);

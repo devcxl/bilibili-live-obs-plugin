@@ -140,6 +140,7 @@ void BiliDock::set_tts_manager(TtsManager *tts)
 
         c.device_enabled = cfg_->tts.device_enabled;
         c.audio_device_id = QString::fromStdString(cfg_->tts.audio_device_id);
+        c.device_volume = cfg_->tts.device_volume;
         c.to_device.danmaku = cfg_->tts.to_device.danmaku;
         c.to_device.gift = cfg_->tts.to_device.gift;
         c.to_device.sc = cfg_->tts.to_device.sc;

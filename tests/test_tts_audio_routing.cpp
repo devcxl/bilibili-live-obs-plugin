@@ -107,6 +107,7 @@ void TestTtsAudioRouting::test_config_backward_compatibility()
 
     data.device_enabled = tj.value("device_enabled", true);
     data.audio_device_id = tj.value("audio_device_id", "");
+    data.device_volume = tj.value("device_volume", data.volume);
     data.obs_enabled = tj.value("obs_enabled", true);
 
     if (tj.contains("to_device")) {
@@ -125,6 +126,7 @@ void TestTtsAudioRouting::test_config_backward_compatibility()
     // 验证旧值被无缝继承到新字段
     QVERIFY(data.device_enabled);
     QVERIFY(data.obs_enabled);
+    QCOMPARE(data.device_volume, 80);
     QVERIFY(data.to_device.danmaku);
     QVERIFY(!data.to_device.gift); // 原配置为 false
     QVERIFY(data.to_device.sc);

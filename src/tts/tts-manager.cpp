@@ -53,7 +53,7 @@ void TtsManager::update_config(const TtsConfig &config)
     if (audio_sink_) {
         audio_sink_->set_sample_rate(config_.sample_rate());
         audio_sink_->set_device_id(config_.audio_device_id);
-        audio_sink_->set_volume(config_.volume / 100.0f);
+        audio_sink_->set_volume(config_.device_volume / 100.0f);
     }
     if (!config_.enabled) {
         stop_and_clear();
