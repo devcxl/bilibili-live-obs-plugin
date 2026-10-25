@@ -4,6 +4,22 @@
 #include <QByteArray>
 #include <cstdint>
 
+enum class TtsOutputChannel : uint32_t {
+    None    = 0,
+    Device  = 1 << 0, // 本机硬件音频设备播放（主播耳机/音箱）
+    Obs     = 1 << 1, // OBS 混音器推流源（直播间观众）
+    Both    = Device | Obs
+};
+
+struct TtsRoutingRules {
+    bool danmaku = true;   // 普通弹幕
+    bool gift = true;      // 礼物送礼
+    bool sc = true;        // SC 醒目留言
+    bool guard = true;     // 大航海上舰
+    bool entry = true;     // 进房欢迎
+    bool like = false;     // 点赞感谢
+};
+
 enum class TtsPriority {
     Like = 0,     // 点赞（最低优先级）
     Entry = 1,    // 进房欢迎
@@ -22,6 +38,7 @@ enum class TtsEntryFilter {
 struct TtsMessage {
     uint64_t id = 0;
     TtsPriority priority = TtsPriority::Normal;
+    uint32_t target_channels = static_cast<uint32_t>(TtsOutputChannel::Both);
     QString text;
     QString sender;
     int64_t timestamp_ms = 0;
@@ -43,16 +60,42 @@ struct TtsConfig {
     QString rate = "+0%";
     QString pitch = "+0%";
     int volume = 100; // 0 ~ 100
-    bool read_danmaku = true;
-    bool read_gift = true;
-    bool read_sc = true;
-    bool read_guard = true;
-    bool read_like = false;
-    bool read_entry = true;
     TtsEntryFilter entry_filter = TtsEntryFilter::All;
     bool merge_enabled = true;
 
+    // 通道 A：本机物理设备
+    bool device_enabled = true;
+    QString audio_device_id;
+    TtsRoutingRules to_device;
+
+    // 通道 B：OBS 混音推流源
+    bool obs_enabled = true;
+    TtsRoutingRules to_obs;
+
     QString format = "raw-24khz-16bit-mono-pcm";
+
+    uint32_t calculate_channels(TtsPriority priority) const {
+        if (!enabled) return static_cast<uint32_t>(TtsOutputChannel::None);
+        uint32_t mask = 0;
+        auto match = [](const TtsRoutingRules &r, TtsPriority p) {
+            switch (p) {
+                case TtsPriority::Normal: return r.danmaku;
+                case TtsPriority::Gift: return r.gift;
+                case TtsPriority::SuperChat: return r.sc;
+                case TtsPriority::Guard: return r.guard;
+                case TtsPriority::Entry: return r.entry;
+                case TtsPriority::Like: return r.like;
+                default: return false;
+            }
+        };
+        if (device_enabled && match(to_device, priority)) {
+            mask |= static_cast<uint32_t>(TtsOutputChannel::Device);
+        }
+        if (obs_enabled && match(to_obs, priority)) {
+            mask |= static_cast<uint32_t>(TtsOutputChannel::Obs);
+        }
+        return mask;
+    }
 
     int sample_rate() const {
         if (format.contains("16khz")) return 16000;

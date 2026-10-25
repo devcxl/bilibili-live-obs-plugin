@@ -31,6 +31,15 @@ struct UserData {
     static UserData from_json(const json &j);
 };
 
+struct TtsRoutingRulesData {
+    bool danmaku = true;
+    bool gift = true;
+    bool sc = true;
+    bool guard = true;
+    bool entry = true;
+    bool like = false;
+};
+
 struct TtsConfigData {
     bool enabled = false;
     std::string key;
@@ -39,14 +48,17 @@ struct TtsConfigData {
     std::string rate = "+0%";
     std::string pitch = "+0%";
     int volume = 100;
-    bool read_danmaku = true;
-    bool read_gift = true;
-    bool read_sc = true;
-    bool read_guard = true;              // 是否开启大航海上舰播报 (默认开启)
-    bool read_like = false;              // 是否开启点赞播报 (默认关闭，防高频打扰)
-    bool read_entry = true;              // 是否开启进房播报 (默认开启)
     int entry_filter = 0;                // 进房播报范围: 0=全部观众, 1=仅粉丝勋章, 2=仅大航海(舰长/提督/总督)
     bool merge_enabled = true;
+
+    // 通道 A：本机物理设备
+    bool device_enabled = true;
+    std::string audio_device_id;
+    TtsRoutingRulesData to_device;
+
+    // 通道 B：OBS 混音推流源
+    bool obs_enabled = true;
+    TtsRoutingRulesData to_obs;
 };
 
 struct DanmakuConfigData {

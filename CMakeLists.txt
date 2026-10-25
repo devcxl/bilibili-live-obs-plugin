@@ -64,6 +64,8 @@ set(SOURCES
   src/tts/tts-cleaner.cpp
   src/tts/azure-tts-backend.cpp
   src/tts/pcm-audio-sink.cpp
+  src/tts/obs-audio-source.cpp
+  src/tts/tts-settings-dialog.cpp
   src/tts/tts-manager.cpp
 )
 
@@ -83,6 +85,8 @@ set(HEADERS
   src/tts/tts-backend.h
   src/tts/azure-tts-backend.h
   src/tts/pcm-audio-sink.h
+  src/tts/obs-audio-source.h
+  src/tts/tts-settings-dialog.h
   src/tts/tts-manager.h
 )
 

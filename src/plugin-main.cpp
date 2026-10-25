@@ -14,6 +14,7 @@
 #include "auth-service.h"
 #include "danmaku-ws.h"
 #include "tts/tts-manager.h"
+#include "tts/obs-audio-source.h"
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("bilibili-live-obs", "en-US")
@@ -155,6 +156,7 @@ bool obs_module_load(void)
 {
     blog(LOG_INFO, "[bilibili-live-obs] version %s loaded", PROJECT_VERSION);
 
+    register_obs_tts_source();
     obs_frontend_add_event_callback(on_frontend_event, nullptr);
     return true;
 }
