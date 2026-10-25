@@ -6,6 +6,7 @@
 #include "tts-types.h"
 #include "tts-backend.h"
 #include "pcm-audio-sink.h"
+#include "obs-audio-source.h"
 #include "../danmaku-ws.h"
 
 class TtsManager : public QObject {
@@ -26,7 +27,7 @@ public:
 
     // 队列大小与状态查询
     size_t queue_size() const { return queue_.size(); }
-    bool is_busy() const { return in_flight_ || audio_sink_->is_playing(); }
+    bool is_busy() const;
 
     // 单独测试/试听文本
     void test_speak(const QString &text);
@@ -47,7 +48,7 @@ signals:
 
 private slots:
     void on_backend_finished(bool success, const QByteArray &pcm_data, const TtsMetrics &metrics);
-    void on_playback_finished();
+    void on_channel_playback_finished(TtsOutputChannel channel);
     void process_queue();
 
 private:
@@ -56,10 +57,13 @@ private:
     TtsConfig config_;
     std::unique_ptr<ITtsBackend> backend_;
     std::unique_ptr<PcmAudioSink> audio_sink_;
+    std::unique_ptr<ObsAudioSourceSink> obs_sink_;
 
     std::deque<TtsMessage> queue_;
     static constexpr size_t MAX_QUEUE_SIZE = 1000;
 
     bool in_flight_ = false; // 是否有正在进行的网络合成请求
+    uint32_t current_msg_channels_ = 0;
+    uint32_t active_playback_channels_ = 0;
     uint64_t next_id_ = 1;
 };

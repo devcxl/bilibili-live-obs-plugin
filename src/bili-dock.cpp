@@ -1,4 +1,5 @@
 #include "bili-dock.h"
+#include "tts/tts-settings-dialog.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -134,14 +135,27 @@ void BiliDock::set_tts_manager(TtsManager *tts)
         c.rate = QString::fromStdString(cfg_->tts.rate);
         c.pitch = QString::fromStdString(cfg_->tts.pitch);
         c.volume = cfg_->tts.volume;
-        c.read_danmaku = cfg_->tts.read_danmaku;
-        c.read_gift = cfg_->tts.read_gift;
-        c.read_sc = cfg_->tts.read_sc;
-        c.read_guard = cfg_->tts.read_guard;
-        c.read_like = cfg_->tts.read_like;
-        c.read_entry = cfg_->tts.read_entry;
         c.entry_filter = static_cast<TtsEntryFilter>(cfg_->tts.entry_filter);
         c.merge_enabled = cfg_->tts.merge_enabled;
+
+        c.device_enabled = cfg_->tts.device_enabled;
+        c.audio_device_id = QString::fromStdString(cfg_->tts.audio_device_id);
+        c.device_volume = cfg_->tts.device_volume;
+        c.to_device.danmaku = cfg_->tts.to_device.danmaku;
+        c.to_device.gift = cfg_->tts.to_device.gift;
+        c.to_device.sc = cfg_->tts.to_device.sc;
+        c.to_device.guard = cfg_->tts.to_device.guard;
+        c.to_device.entry = cfg_->tts.to_device.entry;
+        c.to_device.like = cfg_->tts.to_device.like;
+
+        c.obs_enabled = cfg_->tts.obs_enabled;
+        c.to_obs.danmaku = cfg_->tts.to_obs.danmaku;
+        c.to_obs.gift = cfg_->tts.to_obs.gift;
+        c.to_obs.sc = cfg_->tts.to_obs.sc;
+        c.to_obs.guard = cfg_->tts.to_obs.guard;
+        c.to_obs.entry = cfg_->tts.to_obs.entry;
+        c.to_obs.like = cfg_->tts.to_obs.like;
+
         tts_manager_->update_config(c);
 
         if (tts_toggle_) {
@@ -1083,198 +1097,11 @@ void BiliDock::open_tts_settings()
 {
     if (!cfg_ || !tts_manager_) return;
 
-    QDialog dlg(this);
-    dlg.setWindowTitle("TTS 语音播报设置");
-    dlg.setMinimumWidth(380);
-
-    auto *layout = new QVBoxLayout(&dlg);
-    auto *form = new QFormLayout();
-
-    // 1. Azure Key
-    auto *key_row = new QHBoxLayout();
-    auto *key_edit = new QLineEdit(QString::fromStdString(cfg_->tts.key));
-    key_edit->setEchoMode(QLineEdit::Password);
-    key_edit->setPlaceholderText("Azure Subscription Key");
-    auto *btn_toggle_echo = new QPushButton("显示");
-    btn_toggle_echo->setFixedWidth(44);
-    btn_toggle_echo->setToolTip("显示/隐藏 Key");
-    connect(btn_toggle_echo, &QPushButton::clicked, [key_edit]() {
-        key_edit->setEchoMode(key_edit->echoMode() == QLineEdit::Password ? QLineEdit::Normal : QLineEdit::Password);
-    });
-    key_row->addWidget(key_edit);
-    key_row->addWidget(btn_toggle_echo);
-    form->addRow("Azure Key:", key_row);
-
-    // 2. Region
-    auto *region_combo = new QComboBox();
-    region_combo->setEditable(true);
-    QStringList regions = {"eastasia", "southeastasia", "japaneast", "centralus", "eastus", "westus", "westeurope"};
-    region_combo->addItems(regions);
-    int reg_idx = region_combo->findText(QString::fromStdString(cfg_->tts.region));
-    if (reg_idx >= 0) region_combo->setCurrentIndex(reg_idx);
-    else region_combo->setEditText(QString::fromStdString(cfg_->tts.region));
-    form->addRow("服务区域 (Region):", region_combo);
-
-    // 3. Voice
-    auto *voice_combo = new QComboBox();
-    struct VoiceItem { QString label; QString id; };
-    std::vector<VoiceItem> voices = {
-        {"晓晓 (活泼女声)", "zh-CN-XiaoxiaoNeural"},
-        {"云希 (阳光男声)", "zh-CN-YunxiNeural"},
-        {"云健 (沉稳男声)", "zh-CN-YunjianNeural"},
-        {"晓伊 (温柔女声)", "zh-CN-XiaoyiNeural"},
-        {"云夏 (少年男声)", "zh-CN-YunxiaNeural"},
-        {"晓北 (东北话女声)", "zh-CN-liaoning-XiaobeiNeural"},
-        {"晓妮 (陕西话女声)", "zh-CN-shaanxi-XiaoniNeural"},
-        {"晓辰 (台湾国语)", "zh-TW-HsiaoChenNeural"},
-        {"晓佳 (粤语女声)", "zh-HK-HiuGaaiNeural"}
-    };
-    for (const auto &v : voices) {
-        voice_combo->addItem(v.label, v.id);
-    }
-    QString cur_voice = QString::fromStdString(cfg_->tts.voice);
-    int voice_idx = voice_combo->findData(cur_voice);
-    if (voice_idx >= 0) voice_combo->setCurrentIndex(voice_idx);
-    form->addRow("音色选择 (Voice):", voice_combo);
-
-    // 4. Rate
-    auto *rate_layout = new QHBoxLayout();
-    auto *rate_slider = new QSlider(Qt::Horizontal);
-    rate_slider->setRange(-50, 50);
-    rate_slider->setSingleStep(5);
-    int cur_rate = cfg_->tts.rate.empty() ? 0 : std::atoi(cfg_->tts.rate.c_str());
-    rate_slider->setValue(cur_rate);
-    auto *rate_val_label = new QLabel(QString("%1%").arg(cur_rate >= 0 ? QString("+%1").arg(cur_rate) : QString::number(cur_rate)));
-    connect(rate_slider, &QSlider::valueChanged, [rate_val_label](int val) {
-        rate_val_label->setText(QString("%1%").arg(val >= 0 ? QString("+%1").arg(val) : QString::number(val)));
-    });
-    rate_layout->addWidget(rate_slider);
-    rate_layout->addWidget(rate_val_label);
-    form->addRow("语速调节 (Rate):", rate_layout);
-
-    // 5. Volume
-    auto *vol_layout = new QHBoxLayout();
-    auto *vol_slider = new QSlider(Qt::Horizontal);
-    vol_slider->setRange(0, 100);
-    vol_slider->setSingleStep(5);
-    vol_slider->setValue(cfg_->tts.volume);
-    auto *vol_val_label = new QLabel(QString("%1%").arg(cfg_->tts.volume));
-    connect(vol_slider, &QSlider::valueChanged, [vol_val_label](int val) {
-        vol_val_label->setText(QString("%1%").arg(val));
-    });
-    vol_layout->addWidget(vol_slider);
-    vol_layout->addWidget(vol_val_label);
-    form->addRow("播报音量 (Volume):", vol_layout);
-
-    layout->addLayout(form);
-
-    // 6. Checkboxes Group
-    auto *grp_content = new QGroupBox("播报内容与策略");
-    auto *grp_layout = new QVBoxLayout(grp_content);
-    auto *chk_danmaku = new QCheckBox("朗读普通弹幕");
-    chk_danmaku->setChecked(cfg_->tts.read_danmaku);
-    auto *chk_gift = new QCheckBox("朗读礼物送礼");
-    chk_gift->setChecked(cfg_->tts.read_gift);
-    auto *chk_sc = new QCheckBox("朗读 SC 醒目留言");
-    chk_sc->setChecked(cfg_->tts.read_sc);
-    auto *chk_guard = new QCheckBox("朗读大航海上舰/开通 (最高优先级)");
-    chk_guard->setChecked(cfg_->tts.read_guard);
-    auto *chk_like = new QCheckBox("朗读点赞感谢");
-    chk_like->setChecked(cfg_->tts.read_like);
-
-    auto *entry_row = new QHBoxLayout();
-    auto *chk_entry = new QCheckBox("朗读进房欢迎");
-    chk_entry->setChecked(cfg_->tts.read_entry);
-    auto *entry_filter_combo = new QComboBox();
-    entry_filter_combo->addItem("全部观众进房", 0);
-    entry_filter_combo->addItem("仅佩戴粉丝勋章观众", 1);
-    entry_filter_combo->addItem("仅大航海 (舰长/提督/总督)", 2);
-    entry_filter_combo->setCurrentIndex(std::clamp(cfg_->tts.entry_filter, 0, 2));
-    entry_filter_combo->setEnabled(chk_entry->isChecked());
-    connect(chk_entry, &QCheckBox::toggled, entry_filter_combo, &QComboBox::setEnabled);
-    entry_row->addWidget(chk_entry);
-    entry_row->addSpacing(8);
-    entry_row->addWidget(new QLabel("范围:"));
-    entry_row->addWidget(entry_filter_combo);
-    entry_row->addStretch();
-
-    auto *chk_merge = new QCheckBox("智能合并连续短弹幕/点赞/进房 (节省额度与提升流畅度)");
-    chk_merge->setChecked(cfg_->tts.merge_enabled);
-
-    grp_layout->addWidget(chk_danmaku);
-    grp_layout->addWidget(chk_gift);
-    grp_layout->addWidget(chk_sc);
-    grp_layout->addWidget(chk_guard);
-    grp_layout->addWidget(chk_like);
-    grp_layout->addLayout(entry_row);
-    grp_layout->addWidget(chk_merge);
-    layout->addWidget(grp_content);
-
-    // 7. Test & Action Buttons
-    auto *act_row = new QHBoxLayout();
-    auto *btn_test = new QPushButton("试听测试");
-    auto *btn_clear = new QPushButton("停止/清空");
-    connect(btn_test, &QPushButton::clicked, [this, key_edit, region_combo, voice_combo, rate_slider, vol_slider]() {
-        TtsConfig temp_cfg;
-        temp_cfg.enabled = true;
-        temp_cfg.key = key_edit->text().trimmed();
-        temp_cfg.region = region_combo->currentText().trimmed();
-        temp_cfg.voice = voice_combo->currentData().toString();
-        int r = rate_slider->value();
-        temp_cfg.rate = QString("%1%").arg(r >= 0 ? QString("+%1").arg(r) : QString::number(r));
-        temp_cfg.volume = vol_slider->value();
-        tts_manager_->update_config(temp_cfg);
-        tts_manager_->test_speak("感谢关注哔哩哔哩直播间，祝主播开播大吉！");
-    });
-    connect(btn_clear, &QPushButton::clicked, [this]() {
-        tts_manager_->stop_and_clear();
-        status_bar_->setText("TTS 队列已清空");
-    });
-    act_row->addWidget(btn_test);
-    act_row->addWidget(btn_clear);
-    act_row->addStretch();
-    layout->addLayout(act_row);
-
-    auto *btn_box = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
-    connect(btn_box, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
-    connect(btn_box, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-    layout->addWidget(btn_box);
-
+    TtsSettingsDialog dlg(cfg_, tts_manager_, this);
     if (dlg.exec() == QDialog::Accepted) {
-        cfg_->tts.key = key_edit->text().trimmed().toStdString();
-        cfg_->tts.region = region_combo->currentText().trimmed().toStdString();
-        cfg_->tts.voice = voice_combo->currentData().toString().toStdString();
-        int r = rate_slider->value();
-        cfg_->tts.rate = QString("%1%").arg(r >= 0 ? QString("+%1").arg(r) : QString::number(r)).toStdString();
-        cfg_->tts.volume = vol_slider->value();
-        cfg_->tts.read_danmaku = chk_danmaku->isChecked();
-        cfg_->tts.read_gift = chk_gift->isChecked();
-        cfg_->tts.read_sc = chk_sc->isChecked();
-        cfg_->tts.read_guard = chk_guard->isChecked();
-        cfg_->tts.read_like = chk_like->isChecked();
-        cfg_->tts.read_entry = chk_entry->isChecked();
-        cfg_->tts.entry_filter = entry_filter_combo->currentData().toInt();
-        cfg_->tts.merge_enabled = chk_merge->isChecked();
-        cfg_->save();
-
-        TtsConfig c;
-        c.enabled = tts_toggle_->isChecked();
-        c.key = QString::fromStdString(cfg_->tts.key);
-        c.region = QString::fromStdString(cfg_->tts.region);
-        c.voice = QString::fromStdString(cfg_->tts.voice);
-        c.rate = QString::fromStdString(cfg_->tts.rate);
-        c.pitch = QString::fromStdString(cfg_->tts.pitch);
-        c.volume = cfg_->tts.volume;
-        c.read_danmaku = cfg_->tts.read_danmaku;
-        c.read_gift = cfg_->tts.read_gift;
-        c.read_sc = cfg_->tts.read_sc;
-        c.read_guard = cfg_->tts.read_guard;
-        c.read_like = cfg_->tts.read_like;
-        c.read_entry = cfg_->tts.read_entry;
-        c.entry_filter = static_cast<TtsEntryFilter>(cfg_->tts.entry_filter);
-        c.merge_enabled = cfg_->tts.merge_enabled;
-        tts_manager_->update_config(c);
-
+        if (tts_toggle_) {
+            tts_toggle_->setChecked(cfg_->tts.enabled);
+        }
         status_bar_->setText("TTS 设置已保存");
     }
 }

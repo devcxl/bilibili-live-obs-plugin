@@ -69,3 +69,30 @@ endfunction()
 add_danmaku_test(test_open_live_client)
 add_danmaku_test(test_danmaku_ws_lifecycle)
 add_danmaku_test(test_danmaku_ws_failover)
+
+add_executable(test_tts_audio_routing
+  test_tts_audio_routing.cpp
+  ${CMAKE_SOURCE_DIR}/src/tts/obs-audio-source.cpp
+  ${CMAKE_SOURCE_DIR}/src/config-manager.cpp
+)
+
+target_include_directories(test_tts_audio_routing PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_SOURCE_DIR}/src
+  ${NLOHMANN_INCLUDE_DIR}
+  ${OPENSSL_INCLUDE_DIRS}
+)
+
+target_link_libraries(test_tts_audio_routing PRIVATE
+  Qt6::Core
+  Qt6::Network
+  Qt6::Test
+  Threads::Threads
+  ${OPENSSL_LIBRARIES}
+)
+
+target_compile_definitions(test_tts_audio_routing PRIVATE
+  PROJECT_VERSION="${PROJECT_VERSION}"
+)
+
+add_test(NAME test_tts_audio_routing COMMAND test_tts_audio_routing)

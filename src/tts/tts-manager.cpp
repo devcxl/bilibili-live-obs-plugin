@@ -10,6 +10,7 @@ TtsManager::TtsManager(QObject *parent)
 {
     backend_ = std::make_unique<AzureTtsBackend>(config_, this);
     audio_sink_ = std::make_unique<PcmAudioSink>(config_.sample_rate(), this);
+    obs_sink_ = std::make_unique<ObsAudioSourceSink>(this);
 
     connect(backend_.get(), &ITtsBackend::finished, this, &TtsManager::on_backend_finished);
     connect(backend_.get(), &ITtsBackend::error_occurred, this, [this](const QString &err, int status) {
@@ -19,12 +20,28 @@ TtsManager::TtsManager(QObject *parent)
     connect(audio_sink_.get(), &PcmAudioSink::playback_started, this, [this]() {
         emit tts_state_changed(true);
     });
-    connect(audio_sink_.get(), &PcmAudioSink::playback_finished, this, &TtsManager::on_playback_finished);
+    connect(audio_sink_.get(), &PcmAudioSink::playback_finished, this, [this]() {
+        on_channel_playback_finished(TtsOutputChannel::Device);
+    });
+
+    connect(obs_sink_.get(), &ObsAudioSourceSink::playback_started, this, [this]() {
+        emit tts_state_changed(true);
+    });
+    connect(obs_sink_.get(), &ObsAudioSourceSink::playback_finished, this, [this]() {
+        on_channel_playback_finished(TtsOutputChannel::Obs);
+    });
 }
 
 TtsManager::~TtsManager()
 {
     stop_and_clear();
+}
+
+bool TtsManager::is_busy() const
+{
+    bool sink_playing = audio_sink_ && audio_sink_->is_playing();
+    bool obs_playing = obs_sink_ && obs_sink_->is_playing();
+    return in_flight_ || sink_playing || obs_playing;
 }
 
 void TtsManager::update_config(const TtsConfig &config)
@@ -35,7 +52,8 @@ void TtsManager::update_config(const TtsConfig &config)
     }
     if (audio_sink_) {
         audio_sink_->set_sample_rate(config_.sample_rate());
-        audio_sink_->set_volume(config_.volume / 100.0f);
+        audio_sink_->set_device_id(config_.audio_device_id);
+        audio_sink_->set_volume(config_.device_volume / 100.0f);
     }
     if (!config_.enabled) {
         stop_and_clear();
@@ -58,7 +76,12 @@ void TtsManager::stop_and_clear()
     if (audio_sink_) {
         audio_sink_->stop();
     }
+    if (obs_sink_) {
+        obs_sink_->stop();
+    }
     in_flight_ = false;
+    current_msg_channels_ = 0;
+    active_playback_channels_ = 0;
     queue_.clear();
     emit queue_size_changed(0);
     emit tts_state_changed(false);
@@ -68,9 +91,16 @@ void TtsManager::test_speak(const QString &text)
 {
     if (text.trimmed().isEmpty()) return;
 
+    uint32_t channels = config_.calculate_channels(TtsPriority::SuperChat);
+    if (channels == 0) {
+        // 若两路均未勾选，默认试听两路或开启的一路
+        channels = static_cast<uint32_t>(TtsOutputChannel::Both);
+    }
+
     TtsMessage msg;
     msg.id = next_id_++;
     msg.priority = TtsPriority::SuperChat; // 试听使用最高优先级
+    msg.target_channels = channels;
     msg.text = text.trimmed();
     msg.sender = "系统测试";
     msg.timestamp_ms = QDateTime::currentMSecsSinceEpoch();
@@ -80,7 +110,9 @@ void TtsManager::test_speak(const QString &text)
 
 void TtsManager::on_danmaku_received(const DanmakuMessage &msg)
 {
-    if (!config_.enabled || !config_.read_danmaku) return;
+    if (!config_.enabled) return;
+    uint32_t channels = config_.calculate_channels(TtsPriority::Normal);
+    if (channels == 0) return;
 
     QString cleaned = TtsCleaner::clean_danmaku(
         QString::fromStdString(msg.username),
@@ -91,6 +123,7 @@ void TtsManager::on_danmaku_received(const DanmakuMessage &msg)
     TtsMessage item;
     item.id = next_id_++;
     item.priority = TtsPriority::Normal;
+    item.target_channels = channels;
     item.text = cleaned;
     item.sender = QString::fromStdString(msg.username);
     item.timestamp_ms = QDateTime::currentMSecsSinceEpoch();
@@ -100,7 +133,9 @@ void TtsManager::on_danmaku_received(const DanmakuMessage &msg)
 
 void TtsManager::on_gift_received(const GiftMessage &msg)
 {
-    if (!config_.enabled || !config_.read_gift) return;
+    if (!config_.enabled) return;
+    uint32_t channels = config_.calculate_channels(TtsPriority::Gift);
+    if (channels == 0) return;
 
     QString formatted = TtsCleaner::format_gift(
         QString::fromStdString(msg.username),
@@ -114,6 +149,7 @@ void TtsManager::on_gift_received(const GiftMessage &msg)
     TtsMessage item;
     item.id = next_id_++;
     item.priority = TtsPriority::Gift;
+    item.target_channels = channels;
     item.text = formatted;
     item.sender = QString::fromStdString(msg.username);
     item.timestamp_ms = QDateTime::currentMSecsSinceEpoch();
@@ -123,7 +159,9 @@ void TtsManager::on_gift_received(const GiftMessage &msg)
 
 void TtsManager::on_super_chat_received(const SuperChatMessage &msg)
 {
-    if (!config_.enabled || !config_.read_sc) return;
+    if (!config_.enabled) return;
+    uint32_t channels = config_.calculate_channels(TtsPriority::SuperChat);
+    if (channels == 0) return;
 
     QString formatted = TtsCleaner::format_super_chat(
         QString::fromStdString(msg.username),
@@ -135,6 +173,7 @@ void TtsManager::on_super_chat_received(const SuperChatMessage &msg)
     TtsMessage item;
     item.id = next_id_++;
     item.priority = TtsPriority::SuperChat;
+    item.target_channels = channels;
     item.text = formatted;
     item.sender = QString::fromStdString(msg.username);
     item.timestamp_ms = QDateTime::currentMSecsSinceEpoch();
@@ -144,7 +183,9 @@ void TtsManager::on_super_chat_received(const SuperChatMessage &msg)
 
 void TtsManager::on_guard_received(const GuardMessage &msg)
 {
-    if (!config_.enabled || !config_.read_guard) return;
+    if (!config_.enabled) return;
+    uint32_t channels = config_.calculate_channels(TtsPriority::Guard);
+    if (channels == 0) return;
 
     QString formatted = TtsCleaner::format_guard(
         QString::fromStdString(msg.username),
@@ -160,6 +201,7 @@ void TtsManager::on_guard_received(const GuardMessage &msg)
     TtsMessage item;
     item.id = next_id_++;
     item.priority = TtsPriority::Guard;
+    item.target_channels = channels;
     item.text = formatted;
     item.sender = QString::fromStdString(msg.username);
     item.timestamp_ms = QDateTime::currentMSecsSinceEpoch();
@@ -169,7 +211,9 @@ void TtsManager::on_guard_received(const GuardMessage &msg)
 
 void TtsManager::on_like_received(const LikeMessage &msg)
 {
-    if (!config_.enabled || !config_.read_like) return;
+    if (!config_.enabled) return;
+    uint32_t channels = config_.calculate_channels(TtsPriority::Like);
+    if (channels == 0) return;
 
     QString formatted = TtsCleaner::format_like(
         QString::fromStdString(msg.username),
@@ -180,6 +224,7 @@ void TtsManager::on_like_received(const LikeMessage &msg)
     TtsMessage item;
     item.id = next_id_++;
     item.priority = TtsPriority::Like;
+    item.target_channels = channels;
     item.text = formatted;
     item.sender = QString::fromStdString(msg.username);
     item.timestamp_ms = QDateTime::currentMSecsSinceEpoch();
@@ -193,8 +238,8 @@ void TtsManager::on_entry_received(const EntryMessage &msg)
         blog(LOG_INFO, "[TTS-Entry] 忽略进房: TTS 功能未开启");
         return;
     }
-    if (!config_.read_entry) {
-        blog(LOG_INFO, "[TTS-Entry] 忽略进房: [朗读进房欢迎] 开关处于关闭状态（可在TTS设置中勾选）");
+    uint32_t channels = config_.calculate_channels(TtsPriority::Entry);
+    if (channels == 0) {
         return;
     }
 
@@ -224,6 +269,7 @@ void TtsManager::on_entry_received(const EntryMessage &msg)
     TtsMessage item;
     item.id = next_id_++;
     item.priority = TtsPriority::Entry;
+    item.target_channels = channels;
     item.text = formatted;
     item.sender = QString::fromStdString(msg.username);
     item.timestamp_ms = QDateTime::currentMSecsSinceEpoch();
@@ -264,7 +310,7 @@ void TtsManager::enqueue_message(const TtsMessage &msg)
 void TtsManager::process_queue()
 {
     if (!config_.enabled) return;
-    if (in_flight_ || audio_sink_->is_playing()) return;
+    if (in_flight_ || is_busy()) return;
     if (queue_.empty()) {
         emit tts_state_changed(false);
         return;
@@ -274,6 +320,7 @@ void TtsManager::process_queue()
     TtsMessage first = queue_.front();
     queue_.pop_front();
 
+    current_msg_channels_ = first.target_channels;
     QString text_to_speak;
 
     if (config_.merge_enabled && !queue_.empty()) {
@@ -282,6 +329,7 @@ void TtsManager::process_queue()
             std::vector<TtsMessage> batch;
             batch.push_back(first);
             while (!queue_.empty() && queue_.front().priority == TtsPriority::Normal && batch.size() < 4) {
+                current_msg_channels_ |= queue_.front().target_channels;
                 batch.push_back(queue_.front());
                 queue_.pop_front();
             }
@@ -291,6 +339,7 @@ void TtsManager::process_queue()
             std::vector<TtsMessage> batch;
             batch.push_back(first);
             while (!queue_.empty() && queue_.front().priority == TtsPriority::Entry && batch.size() < 3) {
+                current_msg_channels_ |= queue_.front().target_channels;
                 batch.push_back(queue_.front());
                 queue_.pop_front();
             }
@@ -300,6 +349,7 @@ void TtsManager::process_queue()
             std::vector<TtsMessage> batch;
             batch.push_back(first);
             while (!queue_.empty() && queue_.front().priority == TtsPriority::Like && batch.size() < 4) {
+                current_msg_channels_ |= queue_.front().target_channels;
                 batch.push_back(queue_.front());
                 queue_.pop_front();
             }
@@ -328,7 +378,25 @@ void TtsManager::on_backend_finished(bool success, const QByteArray &pcm_data, c
     in_flight_ = false;
 
     if (success && !pcm_data.isEmpty()) {
-        audio_sink_->play(pcm_data);
+        uint32_t to_play = current_msg_channels_;
+        if (to_play == 0) {
+            to_play = static_cast<uint32_t>(TtsOutputChannel::Both);
+        }
+
+        active_playback_channels_ = 0;
+        if ((to_play & static_cast<uint32_t>(TtsOutputChannel::Device)) && config_.device_enabled) {
+            active_playback_channels_ |= static_cast<uint32_t>(TtsOutputChannel::Device);
+            audio_sink_->play(pcm_data);
+        }
+        if ((to_play & static_cast<uint32_t>(TtsOutputChannel::Obs)) && config_.obs_enabled) {
+            active_playback_channels_ |= static_cast<uint32_t>(TtsOutputChannel::Obs);
+            obs_sink_->play(pcm_data, config_.sample_rate());
+        }
+
+        if (active_playback_channels_ == 0) {
+            // 未激活任何通道，继续下一项
+            process_queue();
+        }
     } else {
         blog(LOG_WARNING, "[TTS] 合成未产生有效音频，跳过并继续下一项: %s",
              metrics.error_string.toUtf8().constData());
@@ -337,8 +405,10 @@ void TtsManager::on_backend_finished(bool success, const QByteArray &pcm_data, c
     }
 }
 
-void TtsManager::on_playback_finished()
+void TtsManager::on_channel_playback_finished(TtsOutputChannel channel)
 {
-    // 当前项播放完毕，继续处理队列中下一项
-    process_queue();
+    active_playback_channels_ &= ~static_cast<uint32_t>(channel);
+    if (active_playback_channels_ == 0) {
+        process_queue();
+    }
 }

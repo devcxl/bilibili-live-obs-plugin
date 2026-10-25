@@ -318,14 +318,51 @@ void ConfigManager::load()
         tts.rate = tj.value("rate", "+0%");
         tts.pitch = tj.value("pitch", "+0%");
         tts.volume = tj.value("volume", 100);
-        tts.read_danmaku = tj.value("read_danmaku", true);
-        tts.read_gift = tj.value("read_gift", true);
-        tts.read_sc = tj.value("read_sc", true);
-        tts.read_guard = tj.value("read_guard", true);
-        tts.read_like = tj.value("read_like", false);
-        tts.read_entry = tj.value("read_entry", true);
         tts.entry_filter = tj.value("entry_filter", 0);
         tts.merge_enabled = tj.value("merge_enabled", true);
+
+        tts.device_enabled = tj.value("device_enabled", true);
+        tts.audio_device_id = tj.value("audio_device_id", "");
+        tts.device_volume = tj.value("device_volume", tts.volume);
+        tts.obs_enabled = tj.value("obs_enabled", true);
+
+        if (tj.contains("to_device")) {
+            const auto &dj = tj["to_device"];
+            tts.to_device.danmaku = dj.value("danmaku", true);
+            tts.to_device.gift = dj.value("gift", true);
+            tts.to_device.sc = dj.value("sc", true);
+            tts.to_device.guard = dj.value("guard", true);
+            tts.to_device.entry = dj.value("entry", true);
+            tts.to_device.like = dj.value("like", false);
+        } else {
+            // 旧配置向后兼容
+            bool old_danmaku = tj.value("read_danmaku", true);
+            bool old_gift = tj.value("read_gift", true);
+            bool old_sc = tj.value("read_sc", true);
+            bool old_guard = tj.value("read_guard", true);
+            bool old_entry = tj.value("read_entry", true);
+            bool old_like = tj.value("read_like", false);
+            tts.to_device = {old_danmaku, old_gift, old_sc, old_guard, old_entry, old_like};
+        }
+
+        if (tj.contains("to_obs")) {
+            const auto &oj = tj["to_obs"];
+            tts.to_obs.danmaku = oj.value("danmaku", true);
+            tts.to_obs.gift = oj.value("gift", true);
+            tts.to_obs.sc = oj.value("sc", true);
+            tts.to_obs.guard = oj.value("guard", true);
+            tts.to_obs.entry = oj.value("entry", true);
+            tts.to_obs.like = oj.value("like", false);
+        } else {
+            // 旧配置向后兼容
+            bool old_danmaku = tj.value("read_danmaku", true);
+            bool old_gift = tj.value("read_gift", true);
+            bool old_sc = tj.value("read_sc", true);
+            bool old_guard = tj.value("read_guard", true);
+            bool old_entry = tj.value("read_entry", true);
+            bool old_like = tj.value("read_like", false);
+            tts.to_obs = {old_danmaku, old_gift, old_sc, old_guard, old_entry, old_like};
+        }
     }
 
     if (j.contains("danmaku")) {
@@ -361,14 +398,31 @@ void ConfigManager::save()
     tj["rate"] = tts.rate;
     tj["pitch"] = tts.pitch;
     tj["volume"] = tts.volume;
-    tj["read_danmaku"] = tts.read_danmaku;
-    tj["read_gift"] = tts.read_gift;
-    tj["read_sc"] = tts.read_sc;
-    tj["read_guard"] = tts.read_guard;
-    tj["read_like"] = tts.read_like;
-    tj["read_entry"] = tts.read_entry;
     tj["entry_filter"] = tts.entry_filter;
     tj["merge_enabled"] = tts.merge_enabled;
+
+    tj["device_enabled"] = tts.device_enabled;
+    tj["audio_device_id"] = tts.audio_device_id;
+    tj["device_volume"] = tts.device_volume;
+    json to_dev_j;
+    to_dev_j["danmaku"] = tts.to_device.danmaku;
+    to_dev_j["gift"] = tts.to_device.gift;
+    to_dev_j["sc"] = tts.to_device.sc;
+    to_dev_j["guard"] = tts.to_device.guard;
+    to_dev_j["entry"] = tts.to_device.entry;
+    to_dev_j["like"] = tts.to_device.like;
+    tj["to_device"] = to_dev_j;
+
+    tj["obs_enabled"] = tts.obs_enabled;
+    json to_obs_j;
+    to_obs_j["danmaku"] = tts.to_obs.danmaku;
+    to_obs_j["gift"] = tts.to_obs.gift;
+    to_obs_j["sc"] = tts.to_obs.sc;
+    to_obs_j["guard"] = tts.to_obs.guard;
+    to_obs_j["entry"] = tts.to_obs.entry;
+    to_obs_j["like"] = tts.to_obs.like;
+    tj["to_obs"] = to_obs_j;
+
     j["tts"] = tj;
 
     json dj;

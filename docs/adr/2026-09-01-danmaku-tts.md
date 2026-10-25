@@ -32,13 +32,17 @@
 
 ---
 
-### 决定 2：采用 QAudioSink 本机播放 + OBS 桌面音频捕获作为音频路由
+### 决定 2：双通道音频分流矩阵与 OBS 原生音频源集成 (升级演进)
 
-* **选择**：通过 Qt6 `QAudioSink` 直接将 PCM 数据输出到系统默认音频播放设备，由 OBS 现有的“桌面音频（Desktop Audio）”捕获并输出到直播流。
-* **排除方案**：
-  * **自定义 OBS Audio Source 注入**：需要在 OBS 场景中新增音频源，处理复杂的采样率转换、重采样与时钟同步，开发与使用门槛高。
+* **演进背景**：
+  在实践中，由于许多 PC 机箱前面板 3.5mm 音频排线存在共地电气串扰（Ground Loop Crosstalk），将声音硬编码输出到默认耳机接口会导致耳机播放的 TTS 声音直接电磁感应反灌进麦克风；此外，主播对“主播耳机听（如进房欢迎）”与“直播间推流听（如大额礼物/SC）”有精细的分流诉求。
+* **选择**：
+  1. **通道 A（本机物理设备）**：基于 Qt6 `QAudioSink` + `QMediaDevices` 支持动态枚举并自由选择输出物理设备（如独立的 USB 声卡、HDMI 显示器音频），具备热插拔感知与系统默认自动 Fallback 能力；
+  2. **通道 B（OBS 混音推流源）**：向 OBS 注册原生音频输入源 `bilibili_live_tts_source`，以 20ms 规格平滑泵送 PCM 音频，在 OBS 混音器中提供独立的音量推子、分轨录像、独立静音与高级音频监听，彻底杜绝物理声卡串音；
+  3. **分流路由矩阵**：在设置界面提供双列勾选表格，普通弹幕、礼物、SC、上舰、进房、点赞可独立指定分流目标。
 * **理由**：
-  * 架构极其简洁，完全复用主播现有的 OBS 桌面音频设置，主播与观众端体验一致。
+  * 兼具灵活性与专业度：不需要 OBS 源时可纯物理设备播放；需要专业分轨调音与推流时享有原生推子；
+  * 彻底消除了硬件串扰进入麦克风的问题。
 
 ---
 
@@ -79,12 +83,14 @@
 
 ```text
 src/tts/
-├── tts-types.h            # 数据结构定义（TtsConfig, TtsMessage, TtsPriority）
+├── tts-types.h            # 数据结构定义（TtsConfig, TtsMessage, TtsPriority, TtsOutputChannel, TtsRoutingRules）
 ├── tts-cleaner.h/.cpp     # 弹幕清洗（敏感词/表情/URL过滤）与批量合并器
 ├── tts-backend.h          # ITtsBackend 纯虚接口
 ├── azure-tts-backend.h/.cpp # Azure REST API 实现（SSML构建、HTTP流式接收、指标收集）
-├── pcm-audio-sink.h/.cpp  # 基于 QAudioSink 的 PCM 播放器（音量控制、打断、清空）
-└── tts-manager.h/.cpp     # 顶层管理协调器（队列管理、Worker 调度、生命周期安全）
+├── pcm-audio-sink.h/.cpp  # 基于 QAudioSink 的物理声卡播放器（支持选择设备、Fallback、音量控制）
+├── obs-audio-source.h/.cpp # OBS 原生音频源类型注册、实例追踪与 20ms 音频帧泵送器
+├── tts-settings-dialog.h/.cpp # 独立的 TTS 设置与分流路由矩阵配置对话框
+└── tts-manager.h/.cpp     # 顶层管理协调器（路由决策、双通道并发播放协同、队列调度）
 ```
 
 ---

@@ -22,16 +22,40 @@ void PcmAudioSink::setup_audio_sink()
     format.setChannelCount(1);
     format.setSampleFormat(QAudioFormat::Int16);
 
-    QAudioDevice default_device = QMediaDevices::defaultAudioOutput();
-    if (default_device.isNull()) {
+    QAudioDevice target_device = QMediaDevices::defaultAudioOutput();
+    if (!device_id_.isEmpty()) {
+        const auto devices = QMediaDevices::audioOutputs();
+        bool found = false;
+        for (const auto &dev : devices) {
+            if (QString::fromUtf8(dev.id()) == device_id_) {
+                target_device = dev;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            blog(LOG_WARNING, "[TTS] 指定的音频输出设备未找到，已回退至系统默认设备: %s",
+                 device_id_.toUtf8().constData());
+        }
+    }
+
+    if (target_device.isNull()) {
         blog(LOG_WARNING, "[TTS] 未检测到系统音频输出设备");
         return;
     }
 
-    audio_sink_ = std::make_unique<QAudioSink>(default_device, format, this);
+    audio_sink_ = std::make_unique<QAudioSink>(target_device, format, this);
     audio_sink_->setVolume(volume_);
 
     connect(audio_sink_.get(), &QAudioSink::stateChanged, this, &PcmAudioSink::on_state_changed);
+}
+
+void PcmAudioSink::set_device_id(const QString &device_id)
+{
+    if (device_id_ != device_id) {
+        device_id_ = device_id;
+        setup_audio_sink();
+    }
 }
 
 void PcmAudioSink::set_sample_rate(int sample_rate)
